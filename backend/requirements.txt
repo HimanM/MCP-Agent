@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==14.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
+redis[hiredis]==5.2.1
+groq==0.13.1
+google-genai==1.8.0
+mcp==1.6.0
+httpx==0.28.1
+langdetect==1.0.9
+python-dotenv==1.0.1
