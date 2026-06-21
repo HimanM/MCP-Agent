@@ -16,7 +16,7 @@ Ship a guided gift-finder flow inspired by the candidate repos, but reuse the ex
 - [x] Run lint
 - [x] Run production build
 - [x] Verify the flow in a live browser session
-- [ ] Commit, push branch, and open draft PR
+- [x] Commit, push branch, and open draft PR
 
 ## Notes
 
@@ -24,3 +24,4 @@ Ship a guided gift-finder flow inspired by the candidate repos, but reuse the ex
 - Candidate reference: `tmp_compare/Kapruka-Ai-Shopping-Agent/lib/agents/gift-agent.js`
 - ponytail: keep this frontend-only for iteration 1; use the existing chat toolchain before adding a dedicated gift backend.
 - Browser verification note: the live repo `.env` currently allows `http://localhost:3000`, so verification used `localhost` rather than `127.0.0.1`.
+- Draft PR: `https://github.com/HimanM/MCP-Agent/pull/1`
