@@ -52,12 +52,15 @@ const suggestions = [
   "Party supplies for 10",
 ];
 
+const TRACK_ORDER_PROMPT = "I want to track my order. Please ask me for the Kapruka order number if needed.";
+const CATEGORY_PROMPT = "Show me Kapruka product categories";
+
 const chatActions = [
   { label: "Gift advisor", kind: "advisor" as const },
   { label: "Birthday gifts", prompt: "Find 5 birthday gift ideas on Kapruka under Rs. 5,000" },
   { label: "Anniversary gifts", prompt: "Show anniversary gift ideas on Kapruka for my partner" },
-  { label: "Track order", prompt: "I want to track my order. Please ask me for the Kapruka order number if needed." },
-  { label: "Show categories", prompt: "Show me Kapruka product categories" },
+  { label: "Track order", prompt: TRACK_ORDER_PROMPT },
+  { label: "Show categories", prompt: CATEGORY_PROMPT },
 ];
 
 function CartIcon({ className = "" }: { className?: string }) {
@@ -412,7 +415,7 @@ export default function Home() {
                   <div className="ink-reveal" style={inkStyle} aria-hidden="true" />
                   <div className="relative z-10 flex w-full flex-col items-center">
                     <p className="mb-4 text-sm font-medium text-ink-soft">
-                      {backendMeta ? `${backendMeta.provider} • ${backendMeta.mcp.tool_count} MCP tools` : "Live shopping agent"}
+                      {backendMeta ? `${backendMeta.provider} - ${backendMeta.mcp.tool_count} MCP tools` : "Live shopping agent"}
                     </p>
                     <h1 className="mimo-serif max-w-full text-4xl font-normal tracking-normal text-ink sm:text-5xl md:text-6xl">
                       Shop with an AI assistant
@@ -435,6 +438,32 @@ export default function Home() {
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/80" />
                         <span>Open Gift Advisor</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => sendMessage(TRACK_ORDER_PROMPT)}
+                        className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium leading-tight text-ink transition hover:border-border-hover hover:bg-surface-2"
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
+                        <span>Track My Order</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => sendMessage(CATEGORY_PROMPT)}
+                        className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium leading-tight text-ink transition hover:border-border-hover hover:bg-surface-2"
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
+                        <span>Browse Categories</span>
+                      </button>
+                      {cartCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={openCheckout}
+                          className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-bg/85 px-5 py-2.5 text-sm leading-tight text-ink backdrop-blur-sm transition hover:border-ink hover:bg-surface"
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
+                          <span>Open Checkout</span>
+                        </button>
+                      ) : null}
                       {suggestions.map((text) => (
                         <button
                           key={text}

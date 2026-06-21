@@ -18,7 +18,7 @@ Add order-tracking capability inspired by the candidate repos, including a frien
 - [x] Run `npm run lint`
 - [x] Run `npm run build`
 - [x] Verify the flow in a live browser session
-- [ ] Commit, push branch, and open draft PR
+- [x] Commit, push branch, and open draft PR
 
 ## Notes
 
@@ -29,4 +29,5 @@ Add order-tracking capability inspired by the candidate repos, including a frien
 - Live browser checks covered:
   - Missing-order-number flow: "I want to track my order" returns a direct request for the Kapruka order number.
   - Tool path flow: "Track order 12345678" executes the tracking path and returns a graceful not-found response.
+- Follow-up UI polish added empty-state hero buttons for tracking and category browsing.
 - Structured tracking payload normalization is covered by backend unit tests with a representative JSON response shape.
