@@ -11,7 +11,7 @@ from google.genai import types
 
 from agent.language import detect_language
 from agent.prompts import get_system_prompt, build_user_message
-from agent.tools import TOOLS_DEFINITION, execute_tool
+from agent.tools import TOOLS_DEFINITION, coerce_tool_args, execute_tool
 from cart.manager import cart_manager
 from cart.sync import cart_sync
 from config import settings
@@ -130,6 +130,7 @@ async def chat(
 
             if _tool_has_param(fn_name, "session_id"):
                 fn_args["session_id"] = session_id
+            fn_args = coerce_tool_args(fn_name, fn_args)
 
             yield {"type": "tool_call", "tool": fn_name, "args": fn_args}
 

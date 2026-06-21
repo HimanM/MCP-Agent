@@ -9,7 +9,7 @@ from groq import AsyncGroq
 
 from agent.language import detect_language
 from agent.prompts import get_system_prompt, build_user_message
-from agent.tools import TOOLS_DEFINITION, execute_tool
+from agent.tools import TOOLS_DEFINITION, coerce_tool_args, execute_tool, parse_failed_tool_generation
 from cart.manager import cart_manager
 from cart.sync import cart_sync
 from config import settings
@@ -67,14 +67,16 @@ async def _update_context_from_message(session_id: str, user_text: str, ctx: dic
 async def _call_groq(messages, tools, retries=2):
     for attempt in range(retries):
         try:
-            response = await client.chat.completions.create(
-                model=settings.groq_model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=0.7,
-                max_tokens=4096,
-            )
+            request = {
+                "model": settings.groq_model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096,
+            }
+            if tools:
+                request["tools"] = tools
+                request["tool_choice"] = "auto"
+            response = await client.chat.completions.create(**request)
             return response, settings.groq_model
         except Exception as e:
             if "429" in str(e) and attempt < retries - 1:
@@ -85,6 +87,54 @@ async def _call_groq(messages, tools, retries=2):
             else:
                 raise
     raise Exception("Groq rate limited. Please wait a minute and try again.")
+
+
+def _extract_failed_generation(error: Exception) -> str:
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        failed_generation = body.get("error", {}).get("failed_generation")
+        if isinstance(failed_generation, str):
+            return failed_generation
+    return str(error)
+
+
+async def _recover_failed_tool_use(error: Exception, messages: list[dict]) -> tuple[object, str] | None:
+    if "tool_use_failed" not in str(error) and "Failed to call a function" not in str(error):
+        return None
+
+    parsed = parse_failed_tool_generation(_extract_failed_generation(error))
+    if not parsed:
+        return None
+
+    tool_name, tool_args = parsed
+    logger.warning("Recovering failed Groq tool generation by executing %s with coerced args", tool_name)
+    tool_result = await execute_tool(tool_name, tool_args)
+
+    recovered_messages = [
+        *messages,
+        {
+            "role": "assistant",
+            "content": (
+                f"I searched Kapruka using {tool_name} with the user's request. "
+                "Use the tool result below to answer naturally. Do not call another tool for the same search."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"<tool_result name=\"{tool_name}\">\n{tool_result}\n</tool_result>",
+        },
+    ]
+    return await _call_groq(recovered_messages, tools=None)
+
+
+async def _recover_failed_tool_use_text(error: Exception, messages: list[dict]) -> str | None:
+    recovered = await _recover_failed_tool_use(error, messages)
+    if not recovered:
+        return None
+    response, _ = recovered
+    if not response.choices:
+        return None
+    return response.choices[0].message.content
 
 
 async def chat(
@@ -118,8 +168,13 @@ async def chat(
         response, active_model = await _call_groq(messages, _groq_tools())
         logger.info("Using model: %s", active_model)
     except Exception as e:
-        yield {"type": "error", "error": str(e)}
-        return
+        recovered = await _recover_failed_tool_use(e, messages)
+        if recovered:
+            response, active_model = recovered
+            logger.info("Recovered failed tool use with model: %s", active_model)
+        else:
+            yield {"type": "error", "error": str(e)}
+            return
 
     while True:
         choice = response.choices[0]
@@ -149,6 +204,7 @@ async def chat(
 
                 if _tool_has_param(fn_name, "session_id"):
                     fn_args["session_id"] = session_id
+                fn_args = coerce_tool_args(fn_name, fn_args)
 
                 yield {"type": "tool_call", "tool": fn_name, "args": fn_args}
 
@@ -181,7 +237,11 @@ async def chat(
         try:
             response, _ = await _call_groq(messages, _groq_tools())
         except Exception as e:
-            yield {"type": "error", "error": str(e)}
+            recovered_text = await _recover_failed_tool_use_text(e, messages)
+            if recovered_text:
+                yield {"type": "text", "text": recovered_text}
+            else:
+                yield {"type": "error", "error": str(e)}
             return
 
     yield {"type": "text", "text": "I'm sorry, I couldn't process that request. Please try again."}

@@ -11,6 +11,84 @@ from mcp.client import mcp_client
 logger = logging.getLogger(__name__)
 
 
+_NULL_STRINGS = {"", "null", "none", "undefined", "n/a"}
+
+
+def _is_nullish(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip().lower() in _NULL_STRINGS)
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _coerce_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        return int(value.strip().replace(",", ""))
+    return int(value)
+
+
+def _tool_properties(name: str) -> dict[str, dict]:
+    tool = next((tool_def for tool_def in TOOLS_DEFINITION if tool_def["name"] == name), None)
+    if not tool:
+        return {}
+    return tool.get("parameters", {}).get("properties", {})
+
+
+def coerce_tool_args(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Clean model-generated tool args before executing local/MCP tools."""
+    properties = _tool_properties(name)
+    coerced: dict[str, Any] = {}
+
+    for key, value in args.items():
+        if _is_nullish(value):
+            continue
+
+        expected_type = properties.get(key, {}).get("type")
+        try:
+            if expected_type == "integer":
+                int_value = _coerce_int(value)
+                if int_value == 0 and key in {"min_price", "max_price"}:
+                    continue
+                coerced[key] = int_value
+            elif expected_type == "boolean":
+                coerced[key] = _coerce_bool(value)
+            elif expected_type == "string":
+                coerced[key] = str(value).strip()
+            else:
+                coerced[key] = value
+        except (TypeError, ValueError):
+            logger.warning("Dropping invalid tool arg %s.%s=%r", name, key, value)
+
+    return coerced
+
+
+def parse_failed_tool_generation(failed_generation: str) -> tuple[str, dict[str, Any]] | None:
+    """Parse Groq failed_generation snippets like <function=name{...}</function>."""
+    match = re.search(
+        r"<function=([a-zA-Z_][\w]*)(?:\[\])?\s*(\{.*?\})(?:</function>|<function>)",
+        failed_generation,
+        re.DOTALL,
+    )
+    if not match:
+        return None
+    try:
+        return match.group(1), json.loads(match.group(2))
+    except json.JSONDecodeError:
+        logger.warning("Could not parse failed tool generation: %s", failed_generation)
+        return None
+
+
 def parse_product_markdown(text: str) -> dict:
     """Parse Kapruka markdown product response into structured dict."""
     result = {"name": "", "product_id": "", "price": 0, "image_url": "", "raw": text}
@@ -359,7 +437,7 @@ async def execute_tool(name: str, args: dict) -> str:
     if fn is None:
         return f"Unknown tool: {name}"
     try:
-        result = await fn(**args)
+        result = await fn(**coerce_tool_args(name, args))
         return json.dumps(result) if isinstance(result, (dict, list)) else str(result)
     except Exception as e:
         logger.exception("Tool %s failed", name)
