@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type { CartState, CheckoutInfoPayload } from "@/lib/api";
 
 interface CheckoutDrawerProps {
@@ -15,12 +15,23 @@ interface CheckoutDrawerProps {
 
 type CheckoutFormState = CheckoutInfoPayload;
 
-const emptyForm: CheckoutFormState = {
-  recipient: { name: "", phone: "" },
-  delivery: { address: "", city: "", date: "" },
-  sender: { name: "" },
-  gift_message: "",
-};
+function createCheckoutForm(cart: CartState): CheckoutFormState {
+  return {
+    recipient: {
+      name: cart.recipient?.name || "",
+      phone: cart.recipient?.phone || "",
+    },
+    delivery: {
+      address: cart.delivery?.address || "",
+      city: cart.delivery?.city || "",
+      date: cart.delivery?.date || "",
+    },
+    sender: {
+      name: cart.sender?.name || "",
+    },
+    gift_message: cart.gift_message || "",
+  };
+}
 
 function DrawerSection({
   title,
@@ -55,26 +66,7 @@ export default function CheckoutDrawer({
   isSaving = false,
   error,
 }: CheckoutDrawerProps) {
-  const [form, setForm] = useState<CheckoutFormState>(emptyForm);
-
-  useEffect(() => {
-    if (!open) return;
-    setForm({
-      recipient: {
-        name: cart.recipient?.name || "",
-        phone: cart.recipient?.phone || "",
-      },
-      delivery: {
-        address: cart.delivery?.address || "",
-        city: cart.delivery?.city || "",
-        date: cart.delivery?.date || "",
-      },
-      sender: {
-        name: cart.sender?.name || "",
-      },
-      gift_message: cart.gift_message || "",
-    });
-  }, [open, cart.recipient, cart.delivery, cart.sender, cart.gift_message]);
+  const [form, setForm] = useState<CheckoutFormState>(() => createCheckoutForm(cart));
 
   const itemCount = useMemo(
     () => cart.items.reduce((sum, item) => sum + item.quantity, 0),

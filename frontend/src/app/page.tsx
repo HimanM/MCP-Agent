@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, type CSSProperties, type Form
 import ChatMessage from "@/components/ChatMessage";
 import Cart from "@/components/Cart";
 import CheckoutDrawer from "@/components/CheckoutDrawer";
+import GiftAdvisor from "@/components/GiftAdvisor";
 import { useCart } from "@/hooks/useCart";
 import { useChat } from "@/hooks/useChat";
 import { getBackendMeta, type BackendMeta, updateCheckoutInfo, updateBudget, type CheckoutInfoPayload } from "@/lib/api";
@@ -49,6 +50,13 @@ const suggestions = [
   "Flowers for anniversary",
   "Gift ideas for wife",
   "Party supplies for 10",
+];
+
+const chatActions = [
+  { label: "Gift advisor", kind: "advisor" as const },
+  { label: "Birthday gifts", prompt: "Find 5 birthday gift ideas on Kapruka under Rs. 5,000" },
+  { label: "Anniversary gifts", prompt: "Show anniversary gift ideas on Kapruka for my partner" },
+  { label: "Show categories", prompt: "Show me Kapruka product categories" },
 ];
 
 function CartIcon({ className = "" }: { className?: string }) {
@@ -99,6 +107,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showGiftAdvisor, setShowGiftAdvisor] = useState(false);
   const [checkoutSaving, setCheckoutSaving] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSaved, setCheckoutSaved] = useState(false);
@@ -120,7 +129,7 @@ export default function Home() {
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-  }, [input, sendMessage]);
+  }, [input, sendMessage, sessionId]);
 
   useEffect(() => {
     saveSessionId(sessionId);
@@ -177,10 +186,6 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    setBudgetDraft(cart.budget_max != null ? String(cart.budget_max) : "");
-  }, [cart.budget_max]);
-
   const openCheckout = () => {
     setCheckoutSaved(false);
     setCheckoutError(null);
@@ -227,13 +232,14 @@ export default function Home() {
     }
   };
 
-  const budgetTotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const hasBudget = cart.budget_max != null && Number.isFinite(cart.budget_max);
-  const budgetLabel = hasBudget ? `Budget: Rs. ${(cart.budget_max as number).toLocaleString()}` : "No budget set";
-
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     submitCurrentMessage();
+  };
+
+  const handleGiftAdvisorSubmit = (prompt: string) => {
+    setShowGiftAdvisor(false);
+    sendMessage(prompt);
   };
 
   useEffect(() => {
@@ -296,7 +302,7 @@ export default function Home() {
             onUpdateQuantity={updateQuantity}
             onRemove={removeItem}
             onCheckout={openCheckout}
-            budgetDraft={budgetDraft}
+            budgetDraft={budgetDraft || (cart.budget_max != null ? String(cart.budget_max) : "")}
             budgetSaving={budgetSaving}
             onBudgetDraftChange={setBudgetDraft}
             onBudgetSubmit={handleBudgetSubmit}
@@ -327,14 +333,21 @@ export default function Home() {
         />
       )}
 
-      <CheckoutDrawer
-        open={showCheckout}
-        cart={cart}
-        total={total}
-        onClose={() => setShowCheckout(false)}
-        onSubmit={handleCheckoutSubmit}
-        isSaving={checkoutSaving}
-        error={checkoutError}
+      {showCheckout ? (
+        <CheckoutDrawer
+          open={showCheckout}
+          cart={cart}
+          total={total}
+          onClose={() => setShowCheckout(false)}
+          onSubmit={handleCheckoutSubmit}
+          isSaving={checkoutSaving}
+          error={checkoutError}
+        />
+      ) : null}
+      <GiftAdvisor
+        open={showGiftAdvisor}
+        onClose={() => setShowGiftAdvisor(false)}
+        onSubmit={handleGiftAdvisorSubmit}
       />
 
       <div className="flex min-h-screen flex-col">
@@ -413,6 +426,14 @@ export default function Home() {
                     </div>
 
                     <div className="mt-10 flex w-full max-w-4xl flex-wrap justify-center gap-3 px-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowGiftAdvisor(true)}
+                        className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium leading-tight text-white transition hover:bg-accent-hover"
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/80" />
+                        <span>Open Gift Advisor</span>
+                      </button>
                       {suggestions.map((text) => (
                         <button
                           key={text}
@@ -431,6 +452,29 @@ export default function Home() {
 
               {messages.length > 0 && (
                 <div className="mx-auto w-full max-w-5xl space-y-5 pb-8">
+                  <div className="animate-fade-in flex flex-wrap gap-2">
+                    {chatActions.map((action) =>
+                      action.kind === "advisor" ? (
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={() => setShowGiftAdvisor(true)}
+                          className="inline-flex h-10 items-center rounded-full border border-border bg-surface px-4 text-sm text-ink transition hover:border-border-hover hover:bg-surface-2"
+                        >
+                          {action.label}
+                        </button>
+                      ) : (
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={() => sendMessage(action.prompt)}
+                          className="inline-flex h-10 items-center rounded-full border border-border bg-bg px-4 text-sm text-ink-soft transition hover:border-border-hover hover:bg-surface hover:text-ink"
+                        >
+                          {action.label}
+                        </button>
+                      )
+                    )}
+                  </div>
                   {messages.map((msg) => (
                     <ChatMessage key={msg.id} message={msg} sessionId={sessionId} onAdded={refresh} />
                   ))}
