@@ -46,10 +46,10 @@ function saveSessionId(sessionId: string) {
 }
 
 const suggestions = [
-  "Find birthday cakes",
-  "Flowers for anniversary",
-  "Gift ideas for wife",
-  "Party supplies for 10",
+  { label: "Restock groceries", prompt: "Help me restock weekly groceries on Kapruka" },
+  { label: "Birthday cake", prompt: "Find birthday cakes on Kapruka under Rs. 10,000" },
+  { label: "Send flowers", prompt: "I want to send flowers to someone special" },
+  { label: "Party supplies", prompt: "Show party supplies for 10 people" },
 ];
 
 const TRACK_ORDER_PROMPT = "I want to track my order. Please ask me for the Kapruka order number if needed.";
@@ -421,12 +421,27 @@ export default function Home() {
                       Shop with an AI assistant
                     </h1>
                     <p className="command-cursor mt-6 max-w-2xl text-base leading-relaxed text-ink sm:text-xl">
-                      Discover products in chat, add to cart instantly, and save checkout details in a real side panel.
+                      Discover products in chat, track orders, and move into checkout without leaving the conversation.
                     </p>
+
+                    <div className="mt-8 grid w-full max-w-3xl gap-3 text-left sm:grid-cols-3">
+                      <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Gift Picks</p>
+                        <p className="mt-2 text-sm text-ink-soft">Use the advisor or jump straight into birthday, anniversary, and grocery prompts.</p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Order Tracking</p>
+                        <p className="mt-2 text-sm text-ink-soft">Ask for a tracking update anytime and the assistant will prompt for the order number if needed.</p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Checkout Flow</p>
+                        <p className="mt-2 text-sm text-ink-soft">Save delivery details in the side drawer, then come back to chat for order placement and payment.</p>
+                      </div>
+                    </div>
 
                     <div className="mt-8 flex w-full max-w-xl items-center gap-2 rounded-xl border border-border bg-surface-2/90 px-4 py-3 text-left text-sm text-ink-soft shadow-[0_18px_45px_rgba(37,36,31,0.04)] backdrop-blur-sm">
                       <span className="text-muted">&gt;_</span>
-                      <span className="min-w-0 truncate">Find a birthday gift under Rs. 10,000</span>
+                      <span className="min-w-0 truncate">Try: help me restock my weekly groceries</span>
                     </div>
 
                     <div className="mt-10 flex w-full max-w-4xl flex-wrap justify-center gap-3 px-2">
@@ -464,15 +479,15 @@ export default function Home() {
                           <span>Open Checkout</span>
                         </button>
                       ) : null}
-                      {suggestions.map((text) => (
+                      {suggestions.map((suggestion) => (
                         <button
-                          key={text}
+                          key={suggestion.label}
                           type="button"
-                          onClick={() => sendMessage(text)}
+                          onClick={() => sendMessage(suggestion.prompt)}
                           className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-bg/85 px-5 py-2.5 text-sm leading-tight text-ink backdrop-blur-sm transition hover:border-ink hover:bg-surface"
                         >
                           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
-                          <span>{text}</span>
+                          <span>{suggestion.label}</span>
                         </button>
                       ))}
                     </div>
@@ -504,6 +519,15 @@ export default function Home() {
                         </button>
                       )
                     )}
+                    {cartCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={openCheckout}
+                        className="inline-flex h-10 items-center rounded-full border border-border bg-surface px-4 text-sm text-ink transition hover:border-border-hover hover:bg-surface-2"
+                      >
+                        Open checkout
+                      </button>
+                    ) : null}
                   </div>
                   {messages.map((msg) => (
                     <ChatMessage key={msg.id} message={msg} sessionId={sessionId} onAdded={refresh} />
