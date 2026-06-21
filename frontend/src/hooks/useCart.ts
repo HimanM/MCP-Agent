@@ -10,6 +10,7 @@ const emptyCart: CartState = {
   delivery: {},
   sender: {},
   gift_message: "",
+  budget_max: null,
 };
 
 export function useCart(sessionId: string) {

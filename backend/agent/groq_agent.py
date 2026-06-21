@@ -9,7 +9,8 @@ from groq import AsyncGroq
 
 from agent.language import detect_language
 from agent.prompts import get_system_prompt, build_user_message
-from agent.tools import TOOLS_DEFINITION, coerce_tool_args, execute_tool, parse_failed_tool_generation
+from agent.provider_selector import select_model
+from agent.tools import TOOLS_DEFINITION, build_tool_result_event, coerce_tool_args, execute_tool, format_tool_result_for_model, parse_failed_tool_generation
 from cart.manager import cart_manager
 from cart.sync import cart_sync
 from config import settings
@@ -64,11 +65,11 @@ async def _update_context_from_message(session_id: str, user_text: str, ctx: dic
     return ctx
 
 
-async def _call_groq(messages, tools, retries=2):
+async def _call_groq(messages, tools, model: str, retries=2):
     for attempt in range(retries):
         try:
             request = {
-                "model": settings.groq_model,
+                "model": model,
                 "messages": messages,
                 "temperature": 0.7,
                 "max_tokens": 4096,
@@ -77,7 +78,7 @@ async def _call_groq(messages, tools, retries=2):
                 request["tools"] = tools
                 request["tool_choice"] = "auto"
             response = await client.chat.completions.create(**request)
-            return response, settings.groq_model
+            return response, model
         except Exception as e:
             if "429" in str(e) and attempt < retries - 1:
                 import asyncio
@@ -124,7 +125,7 @@ async def _recover_failed_tool_use(error: Exception, messages: list[dict]) -> tu
             "content": f"<tool_result name=\"{tool_name}\">\n{tool_result}\n</tool_result>",
         },
     ]
-    return await _call_groq(recovered_messages, tools=None)
+    return await _call_groq(recovered_messages, None, select_model('groq'))
 
 
 async def _recover_failed_tool_use_text(error: Exception, messages: list[dict]) -> str | None:
@@ -149,6 +150,8 @@ async def chat(
     ctx = await cart_manager.get_context(session_id)
     ctx = await _update_context_from_message(session_id, user_text, ctx)
     await cart_manager.save_context(session_id, ctx)
+    if ctx.get("budget_max") is not None and ctx.get("budget_max") != cart_state.get("budget_max"):
+        await cart_manager.update_budget(session_id, ctx["budget_max"])
 
     user_message = build_user_message(user_text, cart_state, ctx)
 
@@ -163,9 +166,10 @@ async def chat(
 
     tool_calls_made = 0
     max_tool_rounds = 10
+    seen_tool_signatures: set[str] = set()
 
     try:
-        response, active_model = await _call_groq(messages, _groq_tools())
+        response, active_model = await _call_groq(messages, _groq_tools(), select_model('groq', user_text))
         logger.info("Using model: %s", active_model)
     except Exception as e:
         recovered = await _recover_failed_tool_use(e, messages)
@@ -205,12 +209,18 @@ async def chat(
                 if _tool_has_param(fn_name, "session_id"):
                     fn_args["session_id"] = session_id
                 fn_args = coerce_tool_args(fn_name, fn_args)
+                signature = f"{fn_name}:{json.dumps(fn_args, sort_keys=True, default=str)}"
+                if signature in seen_tool_signatures:
+                    yield {"type": "text", "text": "I already checked that exact step, so I’m wrapping up with the best answer I have."}
+                    return
+                seen_tool_signatures.add(signature)
 
                 yield {"type": "tool_call", "tool": fn_name, "args": fn_args}
 
                 result = await execute_tool(fn_name, fn_args)
+                tool_event = build_tool_result_event(fn_name, result)
 
-                yield {"type": "tool_result", "tool": fn_name, "result": result}
+                yield {"type": "tool_result", "tool": fn_name, **tool_event}
 
                 if fn_name in ("add_to_cart", "remove_from_cart", "update_cart_quantity"):
                     cart_state = await cart_manager.get_cart(session_id)
@@ -222,12 +232,12 @@ async def chat(
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result,
+                    "content": format_tool_result_for_model(fn_name, result, user_text, fn_args),
                 })
 
                 tool_calls_made += 1
                 if tool_calls_made >= max_tool_rounds:
-                    yield {"type": "text", "text": "I've made several tool calls. Let me summarize what I found."}
+                    yield {"type": "text", "text": "I’ve gathered enough to help. Here’s the best answer I can give from the data I found."}
                     return
 
         if choice.finish_reason == "length":
@@ -235,7 +245,7 @@ async def chat(
             return
 
         try:
-            response, _ = await _call_groq(messages, _groq_tools())
+            response, _ = await _call_groq(messages, _groq_tools(), select_model('groq', user_text))
         except Exception as e:
             recovered_text = await _recover_failed_tool_use_text(e, messages)
             if recovered_text:

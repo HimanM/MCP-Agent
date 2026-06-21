@@ -23,6 +23,10 @@ class CheckoutInfoRequest(BaseModel):
     gift_message: str | None = None
 
 
+class BudgetRequest(BaseModel):
+    budget_max: int | None = None
+
+
 @router.get("/{session_id}")
 async def get_cart(session_id: str):
     cart = await cart_manager.get_cart(session_id)
@@ -94,3 +98,11 @@ async def update_checkout_info(session_id: str, req: CheckoutInfoRequest):
 
     cart = await cart_manager.update_checkout_info(session_id, **fields)
     return {"cart": cart}
+
+
+@router.patch("/{session_id}/budget")
+async def update_budget(session_id: str, req: BudgetRequest):
+    cart = await cart_manager.update_budget(session_id, req.budget_max)
+    await cart_sync.broadcast(session_id, {"type": "cart_updated", "cart": cart})
+    total = sum(i["price"] * i["quantity"] for i in cart.get("items", []))
+    return {"cart": cart, "total": total}

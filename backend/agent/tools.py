@@ -4,12 +4,22 @@ import json
 import logging
 import re
 from typing import Any, Callable
+from urllib.parse import urljoin, urlparse
+
+import httpx
 
 from cart.manager import cart_manager
 from mcp.client import mcp_client
 
 logger = logging.getLogger(__name__)
+http_client = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
 
+_IMAGE_FETCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.kapruka.com/",
+}
 
 _NULL_STRINGS = {"", "null", "none", "undefined", "n/a"}
 
@@ -89,44 +99,255 @@ def parse_failed_tool_generation(failed_generation: str) -> tuple[str, dict[str,
         return None
 
 
+def _first_url(text: str, label: str | None = None) -> str:
+    if label:
+        label_match = re.search(rf"\[{re.escape(label)}\]\((https?://[^)]+)\)", text, re.IGNORECASE)
+        if label_match:
+            return label_match.group(1).strip()
+    url_match = re.search(r"https?://[^\s)\]]+", text)
+    return url_match.group(0).strip() if url_match else ""
+
+
+def _absolute_url(base_url: str, maybe_relative: str) -> str:
+    if not maybe_relative:
+        return ""
+    if maybe_relative.startswith("http://") or maybe_relative.startswith("https://"):
+        return maybe_relative
+    if not base_url:
+        return maybe_relative
+    return urljoin(base_url, maybe_relative)
+
+
+def _extract_meta_content(html: str, names: list[str]) -> str:
+    for name in names:
+        patterns = [
+            rf'<meta[^>]+property=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']{re.escape(name)}["\']',
+            rf'<meta[^>]+name=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    return ""
+
+
+async def _derive_image_url(product_url: str, raw: str = "") -> str:
+    if not product_url:
+        return ""
+
+    html = raw if "<html" in raw.lower() else ""
+    if not html:
+        try:
+            response = await http_client.get(product_url, headers=_IMAGE_FETCH_HEADERS)
+            if response.status_code >= 400:
+                return ""
+            html = response.text
+        except Exception:
+            return ""
+
+    meta_image = _extract_meta_content(html, ["og:image", "og:image:url", "twitter:image", "twitter:image:src"])
+    if meta_image:
+        return _absolute_url(product_url, meta_image)
+
+    src_match = re.search(r'<img[^>]+(?:data-src|src)=["\']([^"\']+)["\']', html, re.IGNORECASE)
+    if src_match:
+        return _absolute_url(product_url, src_match.group(1).strip())
+    return ""
+
+
+async def _enrich_product(product: dict, raw: str, *, fetch_image: bool = True) -> dict:
+    enriched = dict(product)
+    if fetch_image and not enriched.get("image_url") and enriched.get("product_url"):
+        enriched["image_url"] = await _derive_image_url(enriched["product_url"], raw)
+    return enriched
+
+
+def _normalize_product_record(record: dict, raw: str) -> dict:
+    product = {
+        "name": str(record.get("name") or record.get("title") or "").strip(),
+        "product_id": str(record.get("product_id") or record.get("id") or "").strip(),
+        "price": int(record.get("price") or 0),
+        "image_url": str(record.get("image_url") or record.get("image") or "").strip(),
+        "product_url": str(record.get("product_url") or record.get("url") or "").strip(),
+        "raw": raw,
+    }
+    if not product["product_url"]:
+        product["product_url"] = _first_url(raw, "View Product")
+    return product
+
+
 def parse_product_markdown(text: str) -> dict:
     """Parse Kapruka markdown product response into structured dict."""
-    result = {"name": "", "product_id": "", "price": 0, "image_url": "", "raw": text}
+    raw = text or ""
+    result = {"name": "", "product_id": "", "price": 0, "image_url": "", "product_url": "", "raw": raw}
 
-    name_match = re.search(r"^## (.+)$", text, re.MULTILINE)
+    if raw.lstrip().startswith("{"):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return _normalize_product_record(data, raw)
+        except json.JSONDecodeError:
+            pass
+
+    name_match = re.search(r"^##\s+(.+)$", raw, re.MULTILINE)
     if name_match:
         result["name"] = name_match.group(1).strip()
+    else:
+        title_match = re.search(r"^#\s+(.+)$", raw, re.MULTILINE)
+        if title_match:
+            result["name"] = title_match.group(1).strip()
 
-    id_match = re.search(r"\*\*ID\*\*:\s*`?([^`\n]+)`?", text)
+    id_match = re.search(r"(?:\*\*ID\*\*|ID)\s*:\s*`?([^`\n]+)`?", raw, re.IGNORECASE)
     if id_match:
         result["product_id"] = id_match.group(1).strip()
 
-    price_match = re.search(r"\*\*Price\*\*:\s*(?:LKR|Rs\.?)\s*([\d,]+)", text)
+    price_match = re.search(r"\*\*Price\*\*:\s*(?:LKR|Rs\.?)\s*([\d,]+)", raw)
     if price_match:
         result["price"] = int(price_match.group(1).replace(",", ""))
+    else:
+        price_match = re.search(r"(?:LKR|Rs\.?)\s*([\d,]+)", raw)
+        if price_match:
+            result["price"] = int(price_match.group(1).replace(",", ""))
 
-    img_match = re.search(r"\*\*Image\*\*:\s*(https?://\S+)", text)
+    img_match = re.search(r"\*\*Image\*\*:\s*(https?://\S+)", raw)
     if img_match:
         result["image_url"] = img_match.group(1)
+    else:
+        img_match = re.search(r"!\[[^\]]*\]\((https?://[^)]+)\)", raw)
+        if img_match:
+            result["image_url"] = img_match.group(1)
 
+    result["product_url"] = _first_url(raw, "View Product")
+    if not result["product_url"]:
+        result["product_url"] = _first_url(raw)
     return result
+
+
+def parse_search_products_markdown(text: str, limit: int = 6) -> list[dict]:
+    """Parse Kapruka search results into a concise list of structured product dicts."""
+    raw = text or ""
+
+    if raw.lstrip().startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                products = [parse_product_markdown(json.dumps(item) if isinstance(item, dict) else str(item)) for item in data]
+                seen: set[str] = set()
+                condensed: list[dict] = []
+                for product in products:
+                    signature = product.get("product_id") or product.get("product_url") or product.get("name")
+                    if not signature or signature in seen:
+                        continue
+                    seen.add(signature)
+                    condensed.append(product)
+                    if len(condensed) >= limit:
+                        break
+                return condensed
+        except json.JSONDecodeError:
+            pass
+
+    item_matches = list(re.finditer(r"(?ms)^\*\*\d+\.\s+(.+?)\*\*\s*\n(.*?)(?=^\*\*\d+\.\s+.+?\*\*\s*$|\Z)", raw))
+    blocks = [match.group(0).strip() for match in item_matches]
+
+    if not blocks:
+        heading_matches = list(re.finditer(r"(?m)^##\s+.+$", raw))
+        if heading_matches:
+            for idx, match in enumerate(heading_matches):
+                start = match.start()
+                end = heading_matches[idx + 1].start() if idx + 1 < len(heading_matches) else len(raw)
+                blocks.append(raw[start:end].strip())
+        else:
+            parts = [part.strip() for part in re.split(r"\n\s*\n", raw) if part.strip()]
+            blocks = parts if parts else [raw]
+
+    products: list[dict] = []
+    seen: set[str] = set()
+    for block in blocks:
+        product = parse_product_markdown(block)
+        if not product["name"]:
+            title_match = re.search(r"^\*\*\d+\.\s+(.+?)\*\*$", block, re.MULTILINE)
+            if title_match:
+                product["name"] = title_match.group(1).strip()
+        if not product["product_url"]:
+            product["product_url"] = _first_url(block, "View product") or _first_url(block)
+        signature = product.get("product_id") or product.get("product_url") or product.get("name")
+        if signature and signature in seen:
+            continue
+        if signature:
+            seen.add(signature)
+        if product["name"] or product["product_id"] or product["product_url"]:
+            products.append(product)
+        if len(products) >= limit:
+            break
+
+    return products
+
+
+def build_tool_result_event(tool_name: str, result: Any) -> dict[str, Any]:
+    event: dict[str, Any] = {"result": result}
+    if tool_name == "search_products" and isinstance(result, str):
+        products = parse_search_products_markdown(result)
+        if products:
+            event["products"] = products
+            event["raw"] = result
+    elif tool_name == "get_product" and isinstance(result, str):
+        product = parse_product_markdown(result)
+        if product.get("name") or product.get("product_id") or product.get("product_url"):
+            event["product"] = product
+            event["raw"] = result
+    return event
+
+
+def format_tool_result_for_model(tool_name: str, result: Any, user_text: str, args: dict[str, Any]) -> str:
+    if tool_name != "search_products":
+        return str(result)
+
+    return (
+        "<search_result_candidates>\n"
+        f"user_request: {user_text}\n"
+        f"search_query: {args.get('q', '')}\n"
+        f"results: {result}\n"
+        "</search_result_candidates>\n\n"
+        "These are candidates, not recommendations. Before answering, compare each candidate to the user's actual intent. "
+        "Recommend only clear matches. If the candidates do not fit the request, call search_products again with a better query. "
+        "Do not show irrelevant products just because they appeared in the search result."
+    )
 
 
 async def _search_products(q: str = "", category: str = "", min_price: int = 0,
                            max_price: int = 0, in_stock_only: bool = True,
-                           sort: str = "relevance", limit: int = 10, **_) -> Any:
-    args: dict[str, Any] = {"q": q, "limit": limit, "sort": sort, "in_stock_only": in_stock_only}
+                           sort: str = "relevance", limit: int = 10, session_id: str = "", **_) -> Any:
+    args: dict[str, Any] = {
+        "q": " ".join((q or "").split()).strip(),
+        "limit": max(1, min(limit or 10, 10)),
+        "sort": sort,
+        "in_stock_only": in_stock_only,
+    }
     if category:
         args["category"] = category
     if min_price > 0:
         args["min_price"] = min_price
     if max_price > 0:
         args["max_price"] = max_price
-    return await mcp_client.call_tool("kapruka_search_products", args)
+
+    raw = await mcp_client.call_tool("kapruka_search_products", args)
+    if isinstance(raw, str):
+        products = parse_search_products_markdown(raw, limit=args["limit"])
+        enriched = []
+        for product in products:
+            enriched.append(await _enrich_product(product, product.get("raw", raw), fetch_image=True))
+        return json.dumps(enriched)
+    return raw
 
 
 async def _get_product(product_id: str, **_) -> Any:
-    return await mcp_client.call_tool("kapruka_get_product", {"product_id": product_id})
+    raw = await mcp_client.call_tool("kapruka_get_product", {"product_id": product_id})
+    if isinstance(raw, str):
+        product = parse_product_markdown(raw)
+        product = await _enrich_product(product, raw, fetch_image=True)
+        return json.dumps(product)
+    return raw
 
 
 async def _list_categories(depth: int = 1, **_) -> Any:
@@ -224,6 +445,14 @@ async def _update_checkout_info(session_id: str, field: str, value: str, **_) ->
     return f"Updated {field} to: {value}"
 
 
+async def _update_budget(session_id: str, budget_max: int | None = None, budget: int | None = None, **_) -> str:
+    value = budget_max if budget_max is not None else budget
+    await cart_manager.update_budget(session_id, value)
+    if value is None:
+        return "Cleared budget limit"
+    return f"Updated budget limit to Rs. {value}"
+
+
 async def _checkout(session_id: str, **_) -> str:
     cart = await cart_manager.get_cart(session_id)
     if not cart.get("items"):
@@ -288,6 +517,7 @@ TOOLS_DEFINITION = [
                 "in_stock_only": {"type": "boolean", "description": "Only show in-stock items", "default": True},
                 "sort": {"type": "string", "description": "Sort order", "default": "relevance"},
                 "limit": {"type": "integer", "description": "Number of results", "default": 10},
+                "session_id": {"type": "string", "description": "User session ID"},
             },
             "required": ["q"],
         },
@@ -388,6 +618,19 @@ TOOLS_DEFINITION = [
         },
     },
     {
+        "name": "update_budget",
+        "description": "Set or clear the optional budget limit for the current shopping session.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "User session ID"},
+                "budget_max": {"type": "integer", "description": "Budget cap in LKR"},
+                "budget": {"type": "integer", "description": "Budget cap in LKR (alias)"},
+            },
+            "required": ["session_id"],
+        },
+    },
+    {
         "name": "update_checkout_info",
         "description": "Save checkout information (recipient, delivery, sender details) to the cart. Call this as the user provides each piece of info during checkout.",
         "parameters": {
@@ -427,6 +670,7 @@ TOOL_MAP: dict[str, Callable] = {
     "remove_from_cart": _remove_from_cart,
     "update_cart_quantity": _update_cart_quantity,
     "get_cart": _get_cart,
+    "update_budget": _update_budget,
     "update_checkout_info": _update_checkout_info,
     "checkout": _checkout,
 }

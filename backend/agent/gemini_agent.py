@@ -11,7 +11,8 @@ from google.genai import types
 
 from agent.language import detect_language
 from agent.prompts import get_system_prompt, build_user_message
-from agent.tools import TOOLS_DEFINITION, coerce_tool_args, execute_tool
+from agent.provider_selector import select_model
+from agent.tools import TOOLS_DEFINITION, build_tool_result_event, coerce_tool_args, execute_tool, format_tool_result_for_model
 from cart.manager import cart_manager
 from cart.sync import cart_sync
 from config import settings
@@ -32,11 +33,11 @@ def _tool_has_param(fn_name: str, param: str) -> bool:
     return param in tool_def.get("parameters", {}).get("properties", {})
 
 
-async def _call_gemini(contents, system_prompt, retries=2):
+async def _call_gemini(contents, system_prompt, model: str, retries=2):
     for attempt in range(retries):
         try:
             return await client.aio.models.generate_content(
-                model=GEMINI_MODEL,
+                model=model,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -90,6 +91,8 @@ async def chat(
     ctx = await cart_manager.get_context(session_id)
     ctx = await _update_context_from_message(session_id, user_text, ctx)
     await cart_manager.save_context(session_id, ctx)
+    if ctx.get("budget_max") is not None and ctx.get("budget_max") != cart_state.get("budget_max"):
+        await cart_manager.update_budget(session_id, ctx["budget_max"])
 
     user_message = build_user_message(user_text, cart_state, ctx)
 
@@ -102,7 +105,7 @@ async def chat(
     contents.append(types.Content(role="user", parts=[types.Part(text=user_message)]))
 
     try:
-        response = await _call_gemini(contents, system_prompt)
+        response = await _call_gemini(contents, system_prompt, select_model('gemini', user_text))
     except Exception as e:
         logger.exception("Gemini API call failed")
         yield {"type": "error", "error": f"Gemini API error: {e}"}
@@ -110,6 +113,7 @@ async def chat(
 
     tool_calls_made = 0
     max_tool_rounds = 10
+    seen_tool_signatures: set[str] = set()
 
     while response.candidates and response.candidates[0].content:
         candidate = response.candidates[0]
@@ -126,17 +130,25 @@ async def chat(
         tool_response_parts = []
         for part in function_calls:
             fn_name = part.function_call.name
+            if not fn_name:
+                continue
             fn_args = dict(part.function_call.args) if part.function_call.args else {}
 
             if _tool_has_param(fn_name, "session_id"):
                 fn_args["session_id"] = session_id
             fn_args = coerce_tool_args(fn_name, fn_args)
+            signature = f"{fn_name}:{json.dumps(fn_args, sort_keys=True, default=str)}"
+            if signature in seen_tool_signatures:
+                yield {"type": "text", "text": "I already checked that exact step, so I’m wrapping up with the best answer I have."}
+                return
+            seen_tool_signatures.add(signature)
 
             yield {"type": "tool_call", "tool": fn_name, "args": fn_args}
 
             result = await execute_tool(fn_name, fn_args)
+            tool_event = build_tool_result_event(fn_name, result)
 
-            yield {"type": "tool_result", "tool": fn_name, "result": result}
+            yield {"type": "tool_result", "tool": fn_name, **tool_event}
 
             if fn_name in ("add_to_cart", "remove_from_cart", "update_cart_quantity"):
                 cart_state = await cart_manager.get_cart(session_id)
@@ -147,20 +159,20 @@ async def chat(
 
             tool_response_parts.append(types.Part(
                 function_response=types.FunctionResponse(
-                    name=fn_name, response={"result": result}
+                    name=fn_name, response={"result": format_tool_result_for_model(fn_name, result, user_text, fn_args)}
                 )
             ))
 
             tool_calls_made += 1
             if tool_calls_made >= max_tool_rounds:
-                yield {"type": "text", "text": "I've made several tool calls. Let me summarize what I found."}
+                yield {"type": "text", "text": "I’ve gathered enough to help. Here’s the best answer I can give from the data I found."}
                 return
 
         contents.append(candidate.content)
         contents.append(types.Content(role="user", parts=tool_response_parts))
 
         try:
-            response = await _call_gemini(contents, system_prompt)
+            response = await _call_gemini(contents, system_prompt, select_model('gemini', user_text))
         except Exception as e:
             logger.exception("Gemini API call failed in loop")
             yield {"type": "error", "error": f"Gemini API error: {e}"}

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { streamChat } from "@/lib/api";
+import { streamChat, type ProductSummary } from "@/lib/api";
 
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   toolCalls?: { tool: string; args: Record<string, unknown> }[];
+  toolResults?: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[] }[];
   timestamp: number;
 }
 
@@ -33,6 +34,7 @@ export function useChat(sessionId: string) {
 
       let assistantContent = "";
       const toolCalls: { tool: string; args: Record<string, unknown> }[] = [];
+      const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[] }[] = [];
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
@@ -60,13 +62,20 @@ export function useChat(sessionId: string) {
               });
               break;
 
-            case "text":
-              assistantContent = event.text || "";
+            case "tool_result":
+              toolResults.push({
+                tool: event.tool || "",
+                result: event.result,
+                raw: event.raw,
+                product: event.product,
+                products: event.products,
+              });
               setMessages((prev) => {
                 const existing = prev.find((m) => m.id === assistantId);
+                const updatedResults = [...toolResults];
                 if (existing) {
                   return prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: assistantContent } : m
+                    m.id === assistantId ? { ...m, toolResults: updatedResults } : m
                   );
                 }
                 return [
@@ -75,6 +84,30 @@ export function useChat(sessionId: string) {
                     id: assistantId,
                     role: "assistant" as const,
                     content: assistantContent,
+                    toolResults: updatedResults,
+                    timestamp: Date.now(),
+                  },
+                ];
+              });
+              break;
+
+            case "text":
+              assistantContent = event.text || "";
+              setMessages((prev) => {
+                const existing = prev.find((m) => m.id === assistantId);
+                const updatedResults = [...toolResults];
+                if (existing) {
+                  return prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: assistantContent, toolResults: updatedResults } : m
+                  );
+                }
+                return [
+                  ...prev,
+                  {
+                    id: assistantId,
+                    role: "assistant" as const,
+                    content: assistantContent,
+                    toolResults: updatedResults,
                     timestamp: Date.now(),
                   },
                 ];
