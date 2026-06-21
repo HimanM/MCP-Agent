@@ -21,67 +21,102 @@ class ChatRequest(BaseModel):
     history: list[dict] | None = None
 
 
-async def _get_chat_fn(message_text: str):
-    provider = resolve_provider_config(message_text).provider
+def _provider_fallback_order(message_text: str) -> list[str]:
+    preferred = resolve_provider_config(message_text).provider
+    ordered: list[str] = []
+    available = {
+        "openrouter": bool(settings.openrouter_api_key),
+        "groq": bool(settings.groq_api_key),
+        "gemini": bool(settings.gemini_api_key),
+    }
 
-    async def unavailable_chat(session_id: str, user_text: str, history: list[dict] | None = None):
-        yield {
-            'type': 'error',
-            'error': 'No LLM provider is configured. Set OPENROUTER_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY in the repo .env file.'
-        }
+    for provider in (preferred, "openrouter", "gemini", "groq"):
+        if provider == "none":
+            continue
+        if available.get(provider) and provider not in ordered:
+            ordered.append(provider)
 
-    if provider == 'none':
-        return unavailable_chat
+    return ordered
 
-    if provider == 'openrouter':
+
+def _provider_chat_fn(provider: str):
+    if provider == "openrouter":
         from agent.openrouter_agent import chat
         return chat
-    if provider == 'groq' and settings.groq_api_key:
-        try:
-            from agent.groq_agent import chat
-            return chat
-        except Exception:
-            return unavailable_chat
-    if provider == 'gemini' and settings.gemini_api_key:
-        try:
-            from agent.gemini_agent import chat
-            return chat
-        except Exception:
-            return unavailable_chat
-
-    if settings.openrouter_api_key:
-        from agent.openrouter_agent import chat
+    if provider == "groq":
+        from agent.groq_agent import chat
         return chat
-    if settings.groq_api_key:
-        try:
-            from agent.groq_agent import chat
-            return chat
-        except Exception:
-            return unavailable_chat
-    if settings.gemini_api_key:
-        try:
-            from agent.gemini_agent import chat
-            return chat
-        except Exception:
-            return unavailable_chat
-    return unavailable_chat
+    if provider == "gemini":
+        from agent.gemini_agent import chat
+        return chat
+    return None
 
 
 @router.post('/chat')
 async def chat_endpoint(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
-    chat_fn = await _get_chat_fn(req.message)
     provider_config = resolve_provider_config(req.message)
 
     async def event_stream():
-        yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id, 'provider': provider_config.provider, 'model': provider_config.model})}\n\n"
+        candidates = _provider_fallback_order(req.message)
+        if not candidates:
+            yield (
+                f"data: {json.dumps({'type': 'error', 'error': 'No LLM provider is configured. Set OPENROUTER_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY in the repo .env file.'})}\n\n"
+            )
+            yield 'data: [DONE]\n\n'
+            return
 
-        try:
-            async for event in chat_fn(session_id, req.message, req.history or []):
-                yield f"data: {json.dumps(event)}\n\n"
-        except Exception as exc:
-            logger.exception('Chat stream error')
-            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+        yielded_session = False
+        last_error = 'No LLM provider is configured.'
+
+        for provider in candidates:
+            candidate_config = resolve_provider_config(req.message)
+            model = candidate_config.model if candidate_config.provider == provider else ""
+            chat_fn = _provider_chat_fn(provider)
+            if chat_fn is None:
+                continue
+
+            try:
+                if not yielded_session:
+                    yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id, 'provider': provider, 'model': model or provider_config.model})}\n\n"
+                    yielded_session = True
+
+                produced_output = False
+                first_event = True
+
+                async for event in chat_fn(session_id, req.message, req.history or []):
+                    is_fallback_error = (
+                        first_event
+                        and event.get('type') == 'error'
+                        and provider != candidates[-1]
+                    )
+                    first_event = False
+
+                    if is_fallback_error:
+                        last_error = event.get('error') or f'{provider} failed'
+                        logger.warning('Provider %s failed before producing output, trying fallback: %s', provider, last_error)
+                        break
+
+                    produced_output = produced_output or event.get('type') != 'error'
+                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get('type') == 'error':
+                        last_error = event.get('error') or f'{provider} failed'
+                        return
+
+                else:
+                    return
+
+                if produced_output:
+                    return
+            except Exception as exc:
+                last_error = str(exc)
+                logger.exception('Chat stream error for provider %s', provider)
+                if provider == candidates[-1]:
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+                    break
+
+        else:
+            yield f"data: {json.dumps({'type': 'error', 'error': last_error})}\n\n"
 
         yield 'data: [DONE]\n\n'
 
