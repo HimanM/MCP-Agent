@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { streamChat, type ProductSummary, type TrackingSummary } from "@/lib/api";
+import { streamChat, type OrderSummary, type ProductSummary, type TrackingSummary } from "@/lib/api";
 
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   toolCalls?: { tool: string; args: Record<string, unknown> }[];
-  toolResults?: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary }[];
+  toolResults?: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary; order?: OrderSummary }[];
   timestamp: number;
 }
 
@@ -34,7 +34,7 @@ export function useChat(sessionId: string) {
 
       let assistantContent = "";
       const toolCalls: { tool: string; args: Record<string, unknown> }[] = [];
-      const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary }[] = [];
+      const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary; order?: OrderSummary }[] = [];
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
@@ -70,6 +70,7 @@ export function useChat(sessionId: string) {
                 product: event.product,
                 products: event.products,
                 tracking: event.tracking,
+                order: event.order,
               });
               setMessages((prev) => {
                 const existing = prev.find((m) => m.id === assistantId);
