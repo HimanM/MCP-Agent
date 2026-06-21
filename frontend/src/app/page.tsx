@@ -8,6 +8,7 @@ import GiftAdvisor from "@/components/GiftAdvisor";
 import { useCart } from "@/hooks/useCart";
 import { useChat } from "@/hooks/useChat";
 import { createRecognition, isSpeechRecognitionSupported, isSpeechSynthesisSupported, speakText, stopSpeaking, type RecognitionLike } from "@/lib/speech";
+import { detectUiLanguage, getUiCopy, type UiLanguage } from "@/lib/ui-copy";
 import { getBackendMeta, type BackendMeta, updateCheckoutInfo, updateBudget, type CheckoutInfoPayload } from "@/lib/api";
 
 function generateSessionId() {
@@ -56,23 +57,17 @@ function loadVoiceRepliesEnabled() {
   }
 }
 
-const suggestions = [
-  { label: "Restock groceries", prompt: "Help me restock weekly groceries on Kapruka" },
-  { label: "Birthday cake", prompt: "Find birthday cakes on Kapruka under Rs. 10,000" },
-  { label: "Send flowers", prompt: "I want to send flowers to someone special" },
-  { label: "Party supplies", prompt: "Show party supplies for 10 people" },
-];
+const TRACK_ORDER_PROMPT: Record<UiLanguage, string> = {
+  en: "I want to track my order. Please ask me for the Kapruka order number if needed.",
+  si: "මට මගේ ඇණවුම ලුහුබඳින්න ඕන. අවශ්‍ය නම් Kapruka order number එක ඉල්ලන්න.",
+  ta: "என் order-ஐ track செய்ய வேண்டும். தேவைப்பட்டால் Kapruka order number கேளுங்கள்.",
+};
 
-const TRACK_ORDER_PROMPT = "I want to track my order. Please ask me for the Kapruka order number if needed.";
-const CATEGORY_PROMPT = "Show me Kapruka product categories";
-
-const chatActions = [
-  { label: "Gift advisor", kind: "advisor" as const },
-  { label: "Birthday gifts", prompt: "Find 5 birthday gift ideas on Kapruka under Rs. 5,000" },
-  { label: "Anniversary gifts", prompt: "Show anniversary gift ideas on Kapruka for my partner" },
-  { label: "Track order", prompt: TRACK_ORDER_PROMPT },
-  { label: "Show categories", prompt: CATEGORY_PROMPT },
-];
+const CATEGORY_PROMPT: Record<UiLanguage, string> = {
+  en: "Show me Kapruka product categories",
+  si: "Kapruka නිෂ්පාදන කාණ්ඩ පෙන්නන්න",
+  ta: "Kapruka product categories காட்டு",
+};
 
 function CartIcon({ className = "" }: { className?: string }) {
   return (
@@ -129,6 +124,7 @@ export default function Home() {
   const [budgetDraft, setBudgetDraft] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [inkPosition, setInkPosition] = useState({ x: "50%", y: "42%" });
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() => detectUiLanguage(typeof navigator === "undefined" ? "" : navigator.language));
   const [voiceInputSupported] = useState(isSpeechRecognitionSupported);
   const [voiceRepliesSupported] = useState(isSpeechSynthesisSupported);
   const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(loadVoiceRepliesEnabled);
@@ -355,6 +351,16 @@ export default function Home() {
   }, [submitCurrentMessage]);
 
   const cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const uiCopy = getUiCopy(uiLanguage);
+  const trackOrderPrompt = TRACK_ORDER_PROMPT[uiLanguage];
+  const categoryPrompt = CATEGORY_PROMPT[uiLanguage];
+  const chatActions = [
+    { label: uiCopy.giftAdvisor, kind: "advisor" as const },
+    { label: uiCopy.birthdayGifts, prompt: uiCopy.suggestions[1].prompt },
+    { label: uiCopy.anniversaryGifts, prompt: uiLanguage === "en" ? "Show anniversary gift ideas on Kapruka for my partner" : uiLanguage === "si" ? "මගේ partnerට anniversary gift ideas Kapruka එකෙන් පෙන්නන්න" : "என் partner-க்கு anniversary gift ideas Kapruka-வில் காட்டு" },
+    { label: uiCopy.trackOrder, prompt: trackOrderPrompt },
+    { label: uiCopy.showCategories, prompt: categoryPrompt },
+  ];
   const inkStyle = {
     "--ink-x": inkPosition.x,
     "--ink-y": inkPosition.y,
@@ -369,7 +375,7 @@ export default function Home() {
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-5">
           <div>
-            <h2 className="text-sm font-semibold tracking-tight text-ink">Cart</h2>
+            <h2 className="text-sm font-semibold tracking-tight text-ink">{uiCopy.cart}</h2>
             <p className="mt-0.5 text-xs text-muted">
               {cartCount} {cartCount === 1 ? "item" : "items"}
             </p>
@@ -445,10 +451,10 @@ export default function Home() {
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/80 bg-bg/90 px-5 backdrop-blur md:px-8">
           <div className="flex items-center gap-3">
             <div className="text-xl font-semibold tracking-tight text-ink">
-              Kapruka<span className="text-xiaomi">AI</span>
+              {uiCopy.appName.replace("AI", "")}<span className="text-xiaomi">AI</span>
             </div>
             <span className="hidden h-5 w-px bg-border sm:block" />
-            <span className="hidden text-sm text-ink-soft sm:block">Shopping assistant</span>
+            <span className="hidden text-sm text-ink-soft sm:block">{uiCopy.assistantLabel}</span>
             {backendMeta && (
               <div className="hidden items-center gap-2 text-xs text-ink-soft md:flex">
                 <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1 capitalize">
@@ -462,6 +468,22 @@ export default function Home() {
                 </span>
               </div>
             )}
+            <div className="hidden items-center gap-1 md:flex">
+              {(["en", "si", "ta"] as UiLanguage[]).map((language) => (
+                <button
+                  key={language}
+                  type="button"
+                  onClick={() => setUiLanguage(language)}
+                  className={`rounded-full border px-2.5 py-1 text-xs uppercase transition ${
+                    uiLanguage === language
+                      ? "border-accent bg-accent text-white"
+                      : "border-border bg-surface-2 text-ink-soft"
+                  }`}
+                >
+                  {language}
+                </button>
+              ))}
+            </div>
           </div>
 
           <button
@@ -470,7 +492,7 @@ export default function Home() {
             className="relative inline-flex h-10 items-center gap-2 rounded-full border border-border bg-bg px-4 text-sm text-ink transition hover:border-border-hover hover:bg-surface"
           >
             <CartIcon />
-            <span className="hidden sm:inline">Cart</span>
+            <span className="hidden sm:inline">{uiCopy.cart}</span>
             {cartCount > 0 && (
               <span className="grid h-5 min-w-5 place-items-center rounded-full bg-xiaomi px-1.5 text-xs font-semibold text-white">
                 {cartCount}
@@ -502,33 +524,33 @@ export default function Home() {
                   <div className="ink-reveal" style={inkStyle} aria-hidden="true" />
                   <div className="relative z-10 flex w-full flex-col items-center">
                     <p className="mb-4 text-sm font-medium text-ink-soft">
-                      {backendMeta ? `${backendMeta.provider} - ${backendMeta.mcp.tool_count} MCP tools` : "Live shopping agent"}
+                      {backendMeta ? `${backendMeta.provider} - ${backendMeta.mcp.tool_count} MCP tools` : uiCopy.assistantLabel}
                     </p>
                     <h1 className="mimo-serif max-w-full text-4xl font-normal tracking-normal text-ink sm:text-5xl md:text-6xl">
-                      Shop with an AI assistant
+                      {uiCopy.heroTitle}
                     </h1>
                     <p className="command-cursor mt-6 max-w-2xl text-base leading-relaxed text-ink sm:text-xl">
-                      Discover products in chat, track orders, and move into checkout without leaving the conversation.
+                      {uiCopy.heroDescription}
                     </p>
 
                     <div className="mt-8 grid w-full max-w-3xl gap-3 text-left sm:grid-cols-3">
                       <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Gift Picks</p>
-                        <p className="mt-2 text-sm text-ink-soft">Use the advisor or jump straight into birthday, anniversary, and grocery prompts.</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{uiCopy.capabilityGiftTitle}</p>
+                        <p className="mt-2 text-sm text-ink-soft">{uiCopy.capabilityGiftBody}</p>
                       </div>
                       <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Order Tracking</p>
-                        <p className="mt-2 text-sm text-ink-soft">Ask for a tracking update anytime and the assistant will prompt for the order number if needed.</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{uiCopy.capabilityTrackingTitle}</p>
+                        <p className="mt-2 text-sm text-ink-soft">{uiCopy.capabilityTrackingBody}</p>
                       </div>
                       <div className="rounded-2xl border border-border bg-surface/90 px-4 py-4 shadow-[0_12px_30px_rgba(37,36,31,0.04)]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Checkout Flow</p>
-                        <p className="mt-2 text-sm text-ink-soft">Save delivery details in the side drawer, then come back to chat for order placement and payment.</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{uiCopy.capabilityCheckoutTitle}</p>
+                        <p className="mt-2 text-sm text-ink-soft">{uiCopy.capabilityCheckoutBody}</p>
                       </div>
                     </div>
 
                     <div className="mt-8 flex w-full max-w-xl items-center gap-2 rounded-xl border border-border bg-surface-2/90 px-4 py-3 text-left text-sm text-ink-soft shadow-[0_18px_45px_rgba(37,36,31,0.04)] backdrop-blur-sm">
                       <span className="text-muted">&gt;_</span>
-                      <span className="min-w-0 truncate">Try: help me restock my weekly groceries</span>
+                      <span className="min-w-0 truncate">{uiCopy.heroExample}</span>
                     </div>
 
                     <div className="mt-10 flex w-full max-w-4xl flex-wrap justify-center gap-3 px-2">
@@ -538,23 +560,23 @@ export default function Home() {
                         className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium leading-tight text-white transition hover:bg-accent-hover"
                       >
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/80" />
-                        <span>Open Gift Advisor</span>
+                        <span>{uiCopy.openGiftAdvisor}</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => sendMessage(TRACK_ORDER_PROMPT)}
+                        onClick={() => sendMessage(trackOrderPrompt)}
                         className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium leading-tight text-ink transition hover:border-border-hover hover:bg-surface-2"
                       >
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
-                        <span>Track My Order</span>
+                        <span>{uiCopy.trackMyOrder}</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => sendMessage(CATEGORY_PROMPT)}
+                        onClick={() => sendMessage(categoryPrompt)}
                         className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium leading-tight text-ink transition hover:border-border-hover hover:bg-surface-2"
                       >
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
-                        <span>Browse Categories</span>
+                        <span>{uiCopy.browseCategories}</span>
                       </button>
                       {cartCount > 0 ? (
                         <button
@@ -563,10 +585,10 @@ export default function Home() {
                           className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border bg-bg/85 px-5 py-2.5 text-sm leading-tight text-ink backdrop-blur-sm transition hover:border-ink hover:bg-surface"
                         >
                           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-xiaomi" />
-                          <span>Open Checkout</span>
+                          <span>{uiCopy.openCheckout}</span>
                         </button>
                       ) : null}
-                      {suggestions.map((suggestion) => (
+                      {uiCopy.suggestions.map((suggestion) => (
                         <button
                           key={suggestion.label}
                           type="button"
@@ -612,7 +634,7 @@ export default function Home() {
                         onClick={openCheckout}
                         className="inline-flex h-10 items-center rounded-full border border-border bg-surface px-4 text-sm text-ink transition hover:border-border-hover hover:bg-surface-2"
                       >
-                        Open checkout
+                        {uiCopy.openCheckout}
                       </button>
                     ) : null}
                   </div>
@@ -676,7 +698,7 @@ export default function Home() {
                     submitCurrentMessage();
                   }
                 }}
-                placeholder="Search products, ask for recommendations..."
+                placeholder={uiCopy.inputPlaceholder}
                 disabled={isStreaming}
                 className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-surface-2 px-5 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)] disabled:opacity-40"
               />
