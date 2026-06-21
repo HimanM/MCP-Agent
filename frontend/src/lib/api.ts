@@ -40,6 +40,28 @@ export interface ProductSummary {
   raw?: string;
 }
 
+export interface TrackingEvent {
+  label: string;
+  time?: string;
+  location?: string;
+}
+
+export interface TrackingItem {
+  name: string;
+  quantity?: number | null;
+}
+
+export interface TrackingSummary {
+  order_number: string;
+  status: string;
+  recipient: string;
+  estimated_delivery: string;
+  location: string;
+  items: TrackingItem[];
+  events: TrackingEvent[];
+  raw?: string;
+}
+
 export interface CheckoutInfoPayload {
   recipient: {
     name: string;
@@ -74,6 +96,7 @@ export interface ChatEvent {
   cart?: CartState;
   product?: ProductSummary;
   products?: ProductSummary[];
+  tracking?: TrackingSummary;
 }
 
 export async function* streamChat(
