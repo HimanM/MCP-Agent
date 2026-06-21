@@ -7,6 +7,7 @@ import CheckoutDrawer from "@/components/CheckoutDrawer";
 import GiftAdvisor from "@/components/GiftAdvisor";
 import { useCart } from "@/hooks/useCart";
 import { useChat } from "@/hooks/useChat";
+import { createRecognition, isSpeechRecognitionSupported, isSpeechSynthesisSupported, speakText, stopSpeaking, type RecognitionLike } from "@/lib/speech";
 import { getBackendMeta, type BackendMeta, updateCheckoutInfo, updateBudget, type CheckoutInfoPayload } from "@/lib/api";
 
 function generateSessionId() {
@@ -15,6 +16,7 @@ function generateSessionId() {
 
 const SESSION_STORAGE_KEY = "kapruka.chat.session";
 const SESSION_TTL_MS = 5 * 60 * 1000;
+const VOICE_REPLY_STORAGE_KEY = "kapruka.chat.voiceReplies";
 
 function loadSessionId() {
   if (typeof window === "undefined") return generateSessionId();
@@ -42,6 +44,15 @@ function saveSessionId(sessionId: string) {
     );
   } catch {
     // ignore
+  }
+}
+
+function loadVoiceRepliesEnabled() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(VOICE_REPLY_STORAGE_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -118,10 +129,16 @@ export default function Home() {
   const [budgetDraft, setBudgetDraft] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [inkPosition, setInkPosition] = useState({ x: "50%", y: "42%" });
+  const [voiceInputSupported] = useState(isSpeechRecognitionSupported);
+  const [voiceRepliesSupported] = useState(isSpeechSynthesisSupported);
+  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(loadVoiceRepliesEnabled);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const budgetInputRef = useRef<HTMLInputElement>(null);
   const sendButtonRef = useRef<HTMLButtonElement>(null);
+  const recognitionRef = useRef<RecognitionLike | null>(null);
+  const lastSpokenAssistantRef = useRef<string>("");
 
   const submitCurrentMessage = useCallback(() => {
     const rawMessage = inputRef.current?.value ?? input;
@@ -140,8 +157,34 @@ export default function Home() {
   }, [sessionId]);
 
   useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      stopSpeaking();
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VOICE_REPLY_STORAGE_KEY, voiceRepliesEnabled ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    if (!voiceRepliesEnabled) stopSpeaking();
+  }, [voiceRepliesEnabled]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!voiceRepliesEnabled || isStreaming) return;
+    const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant" && message.content.trim());
+    if (!latestAssistant) return;
+    const signature = `${latestAssistant.id}:${latestAssistant.content}`;
+    if (signature === lastSpokenAssistantRef.current) return;
+    lastSpokenAssistantRef.current = signature;
+    speakText(latestAssistant.content);
+  }, [messages, isStreaming, voiceRepliesEnabled]);
 
   useEffect(() => {
     const el = inputRef.current;
@@ -244,6 +287,50 @@ export default function Home() {
   const handleGiftAdvisorSubmit = (prompt: string) => {
     setShowGiftAdvisor(false);
     sendMessage(prompt);
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = createRecognition("en-US");
+    if (!recognition) return;
+    recognitionRef.current = recognition;
+
+    recognition.onresult = (event: {
+      resultIndex: number;
+      results: { [key: number]: { 0: { transcript: string }; isFinal: boolean }; length: number };
+    }) => {
+      let interim = "";
+      let final = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0].transcript;
+        if (result.isFinal) final += transcript;
+        else interim += transcript;
+      }
+
+      const nextValue = (final || interim).trimStart();
+      if (!nextValue) return;
+      setInput(nextValue);
+      if (inputRef.current) inputRef.current.value = nextValue;
+      if (final.trim()) {
+        recognition.stop();
+        setIsListening(false);
+      }
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    try {
+      recognition.start();
+      setIsListening(true);
+    } catch {
+      setIsListening(false);
+    }
   };
 
   useEffect(() => {
@@ -561,6 +648,22 @@ export default function Home() {
 
           <div className="shrink-0 border-t border-border/80 bg-bg/95 px-5 py-4 backdrop-blur md:px-8 md:py-5">
             <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-3xl gap-3">
+              {voiceInputSupported ? (
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={isStreaming}
+                  className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl border transition ${
+                    isListening
+                      ? "border-accent bg-accent text-white"
+                      : "border-border bg-surface text-ink hover:border-border-hover hover:bg-surface-2"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                  aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                  title={isListening ? "Listening... tap to stop" : "Speak your message"}
+                >
+                  <span className="text-base font-semibold">{isListening ? "■" : "Mic"}</span>
+                </button>
+              ) : null}
               <input
                 ref={inputRef}
                 value={input}
@@ -577,6 +680,21 @@ export default function Home() {
                 disabled={isStreaming}
                 className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-surface-2 px-5 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)] disabled:opacity-40"
               />
+              {voiceRepliesSupported ? (
+                <button
+                  type="button"
+                  onClick={() => setVoiceRepliesEnabled((current) => !current)}
+                  className={`inline-flex h-12 shrink-0 items-center rounded-xl border px-3 text-sm transition ${
+                    voiceRepliesEnabled
+                      ? "border-accent bg-accent text-white"
+                      : "border-border bg-surface text-ink hover:border-border-hover hover:bg-surface-2"
+                  }`}
+                  aria-label={voiceRepliesEnabled ? "Turn off spoken replies" : "Turn on spoken replies"}
+                  title={voiceRepliesEnabled ? "Spoken replies on" : "Spoken replies off"}
+                >
+                  Voice
+                </button>
+              ) : null}
               <button
                 ref={sendButtonRef}
                 type="button"
