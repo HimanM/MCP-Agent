@@ -62,6 +62,15 @@ export interface TrackingSummary {
   raw?: string;
 }
 
+export interface OrderSummary {
+  payment_url: string;
+  order_number: string;
+  total?: number | null;
+  currency: string;
+  expires_at: string;
+  raw?: string;
+}
+
 export interface CheckoutInfoPayload {
   recipient: {
     name: string;
@@ -97,6 +106,7 @@ export interface ChatEvent {
   product?: ProductSummary;
   products?: ProductSummary[];
   tracking?: TrackingSummary;
+  order?: OrderSummary;
 }
 
 export async function* streamChat(

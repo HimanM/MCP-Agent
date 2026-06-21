@@ -1,9 +1,10 @@
 "use client";
 
+import PayLinkCard from "@/components/PayLinkCard";
 import ProductCard from "@/components/ProductCard";
 import TrackingCard from "@/components/TrackingCard";
 import { Message } from "@/hooks/useChat";
-import type { ProductSummary, TrackingSummary } from "@/lib/api";
+import type { OrderSummary, ProductSummary, TrackingSummary } from "@/lib/api";
 
 function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown> }) {
   const labels: Record<string, string> = {
@@ -61,6 +62,11 @@ function ToolProducts({
 function ToolTracking({ tracking }: { tracking: TrackingSummary | null }) {
   if (!tracking) return null;
   return <TrackingCard tracking={tracking} />;
+}
+
+function ToolOrder({ order }: { order: OrderSummary | null }) {
+  if (!order) return null;
+  return <PayLinkCard order={order} />;
 }
 
 function normalizeLine(line: string, hasProducts: boolean): string | null {
@@ -155,6 +161,8 @@ export default function ChatMessage({
   const hasProducts = !isUser && productResults.length > 0;
   const trackingResult =
     message.toolResults?.map((entry) => entry.tracking).find((entry): entry is TrackingSummary => Boolean(entry)) || null;
+  const orderResult =
+    message.toolResults?.map((entry) => entry.order).find((entry): entry is OrderSummary => Boolean(entry)) || null;
 
   return (
     <div className={`animate-fade-in flex ${isUser ? "justify-end" : "justify-start"} ${hasProducts ? "w-full" : ""}`}>
@@ -184,6 +192,7 @@ export default function ChatMessage({
         )}
 
         {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
+        {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
 
         {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
           <div className="flex items-center gap-1.5 py-1">
