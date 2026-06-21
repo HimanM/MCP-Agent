@@ -352,6 +352,87 @@ def parse_tracking_result(text: str) -> dict:
     return result
 
 
+def parse_checkout_result(text: str) -> dict:
+    raw = text or ""
+    result = {
+        "payment_url": "",
+        "order_number": "",
+        "total": None,
+        "currency": "LKR",
+        "expires_at": "",
+        "raw": raw,
+    }
+
+    if not raw or raw.startswith("MISSING_INFO:"):
+        return result
+
+    data: Any = raw
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped.startswith("{"):
+            try:
+                data = json.loads(stripped)
+            except json.JSONDecodeError:
+                data = raw
+
+    if isinstance(data, dict):
+        order = data.get("order") if isinstance(data.get("order"), dict) else data
+        total_raw = (
+            order.get("total")
+            or order.get("amount")
+            or order.get("grand_total")
+            or order.get("total_amount")
+        )
+        result["payment_url"] = str(
+            order.get("payment_url")
+            or order.get("paymentUrl")
+            or order.get("pay_url")
+            or order.get("payUrl")
+            or order.get("click_to_pay_url")
+            or order.get("checkout_url")
+            or order.get("pay_link")
+            or order.get("url")
+            or ""
+        ).strip()
+        result["order_number"] = str(
+            order.get("order_number")
+            or order.get("orderNumber")
+            or order.get("order_id")
+            or order.get("orderId")
+            or order.get("id")
+            or ""
+        ).strip()
+        result["expires_at"] = str(
+            order.get("expires_at")
+            or order.get("expiresAt")
+            or order.get("expiry")
+            or order.get("price_lock_expires_at")
+            or ""
+        ).strip()
+
+        if isinstance(total_raw, dict):
+            amount = total_raw.get("amount") or total_raw.get("value") or total_raw.get("price")
+            if amount not in (None, ""):
+                try:
+                    result["total"] = _coerce_int(amount)
+                except (TypeError, ValueError):
+                    result["total"] = None
+            result["currency"] = str(total_raw.get("currency") or order.get("currency") or "LKR").strip() or "LKR"
+        elif total_raw not in (None, ""):
+            try:
+                result["total"] = _coerce_int(total_raw)
+            except (TypeError, ValueError):
+                result["total"] = None
+            result["currency"] = str(order.get("currency") or "LKR").strip() or "LKR"
+    else:
+        result["payment_url"] = _first_url(raw)
+        order_match = re.search(r"(?:order(?:\s+number)?|order_id|order id)\D{0,8}([A-Z0-9-]{4,})", raw, re.IGNORECASE)
+        if order_match:
+            result["order_number"] = order_match.group(1).strip()
+
+    return result
+
+
 def build_tool_result_event(tool_name: str, result: Any) -> dict[str, Any]:
     event: dict[str, Any] = {"result": result}
     if tool_name == "search_products" and isinstance(result, str):
@@ -368,6 +449,11 @@ def build_tool_result_event(tool_name: str, result: Any) -> dict[str, Any]:
         tracking = parse_tracking_result(result)
         if tracking.get("order_number") or tracking.get("status") or tracking.get("events"):
             event["tracking"] = tracking
+            event["raw"] = result
+    elif tool_name == "checkout" and isinstance(result, str):
+        order = parse_checkout_result(result)
+        if order.get("payment_url") or order.get("order_number"):
+            event["order"] = order
             event["raw"] = result
     return event
 
