@@ -56,6 +56,7 @@ const chatActions = [
   { label: "Gift advisor", kind: "advisor" as const },
   { label: "Birthday gifts", prompt: "Find 5 birthday gift ideas on Kapruka under Rs. 5,000" },
   { label: "Anniversary gifts", prompt: "Show anniversary gift ideas on Kapruka for my partner" },
+  { label: "Track order", prompt: "I want to track my order. Please ask me for the Kapruka order number if needed." },
   { label: "Show categories", prompt: "Show me Kapruka product categories" },
 ];
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter
@@ -19,6 +20,23 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
     history: list[dict] | None = None
+
+
+def _needs_order_number_prompt(message_text: str) -> bool:
+    normalized = message_text.lower()
+    asks_to_track = any(
+        phrase in normalized
+        for phrase in (
+            "track order",
+            "track my order",
+            "track package",
+            "order status",
+            "where is my order",
+            "delivery status",
+        )
+    )
+    has_order_number = bool(re.search(r"\b\d{5,}\b", message_text))
+    return asks_to_track and not has_order_number
 
 
 def _provider_fallback_order(message_text: str) -> list[str]:
@@ -58,6 +76,12 @@ async def chat_endpoint(req: ChatRequest):
     provider_config = resolve_provider_config(req.message)
 
     async def event_stream():
+        if _needs_order_number_prompt(req.message):
+            yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id, 'provider': 'local', 'model': 'order-tracking-guard'})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'text': 'Please share your Kapruka order number and I will track the latest status for you.'})}\n\n"
+            yield 'data: [DONE]\n\n'
+            return
+
         candidates = _provider_fallback_order(req.message)
         if not candidates:
             yield (

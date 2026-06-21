@@ -1,8 +1,9 @@
 "use client";
 
 import ProductCard from "@/components/ProductCard";
+import TrackingCard from "@/components/TrackingCard";
 import { Message } from "@/hooks/useChat";
-import type { ProductSummary } from "@/lib/api";
+import type { ProductSummary, TrackingSummary } from "@/lib/api";
 
 function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown> }) {
   const labels: Record<string, string> = {
@@ -15,6 +16,7 @@ function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown>
     checkout: "Placing order",
     list_categories: "Browsing categories",
     check_delivery: "Checking delivery",
+    track_order: `Tracking #${args.order_number || "order"}`,
   };
 
   return (
@@ -56,6 +58,11 @@ function ToolProducts({
   );
 }
 
+function ToolTracking({ tracking }: { tracking: TrackingSummary | null }) {
+  if (!tracking) return null;
+  return <TrackingCard tracking={tracking} />;
+}
+
 function normalizeLine(line: string, hasProducts: boolean): string | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -66,7 +73,7 @@ function normalizeLine(line: string, hasProducts: boolean): string | null {
       /^!\[[^\]]*\]\([^\)]+\)$/.test(trimmed) ||
       /^\[[^\]]+\]\([^\)]+\)$/.test(trimmed) ||
       /^\d+\./.test(trimmed) ||
-      /^[-•*]\s+/.test(trimmed) ||
+      /^[-*]\s+/.test(trimmed) ||
       /(?:\b(?:price|buy here|view product)\b|LKR|Rs\.?)/i.test(trimmed)
     )
   ) {
@@ -84,7 +91,7 @@ function normalizeLine(line: string, hasProducts: boolean): string | null {
   if (orderMatch) {
     text = `${orderMatch[1]} ${text.replace(/^\d+\.\s+/, "")}`;
   } else {
-    text = text.replace(/^[-•*]\s+/, "");
+    text = text.replace(/^[-*]\s+/, "");
   }
 
   text = text.replace(/\s+/g, " ").trim();
@@ -146,6 +153,8 @@ export default function ChatMessage({
     ? uniqueProducts.filter((product) => isProductReferenced(product, message.content)).slice(0, 6)
     : [];
   const hasProducts = !isUser && productResults.length > 0;
+  const trackingResult =
+    message.toolResults?.map((entry) => entry.tracking).find((entry): entry is TrackingSummary => Boolean(entry)) || null;
 
   return (
     <div className={`animate-fade-in flex ${isUser ? "justify-end" : "justify-start"} ${hasProducts ? "w-full" : ""}`}>
@@ -173,6 +182,8 @@ export default function ChatMessage({
         {hasProducts && (
           <ToolProducts products={productResults} sessionId={sessionId} onAdded={onAdded} />
         )}
+
+        {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
 
         {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
           <div className="flex items-center gap-1.5 py-1">

@@ -284,6 +284,74 @@ def parse_search_products_markdown(text: str, limit: int = 6) -> list[dict]:
     return products
 
 
+def parse_tracking_result(text: str) -> dict:
+    raw = text or ""
+    result = {
+        "order_number": "",
+        "status": "",
+        "recipient": "",
+        "estimated_delivery": "",
+        "location": "",
+        "items": [],
+        "events": [],
+        "raw": raw,
+    }
+
+    if not raw:
+        return result
+
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError:
+        return result
+
+    if not isinstance(data, dict):
+        return result
+
+    result["order_number"] = str(
+        data.get("order_number")
+        or data.get("orderNumber")
+        or data.get("id")
+        or ""
+    ).strip()
+    result["status"] = str(data.get("status") or data.get("order_status") or "").strip()
+    result["recipient"] = str(data.get("recipient_name") or data.get("recipient") or "").strip()
+    result["estimated_delivery"] = str(
+        data.get("estimated_delivery") or data.get("delivery_date") or data.get("estimatedDelivery") or ""
+    ).strip()
+    result["location"] = str(data.get("current_location") or data.get("location") or "").strip()
+
+    items = data.get("items") or data.get("products") or data.get("cart") or []
+    if isinstance(items, list):
+        for item in items[:8]:
+            if isinstance(item, dict):
+                name = str(item.get("name") or item.get("title") or item.get("product_name") or "").strip()
+                quantity_raw = item.get("quantity")
+                quantity = None
+                if quantity_raw not in (None, ""):
+                    try:
+                        quantity = _coerce_int(quantity_raw)
+                    except (TypeError, ValueError):
+                        quantity = None
+                if name:
+                    result["items"].append({"name": name, "quantity": quantity})
+            elif isinstance(item, str) and item.strip():
+                result["items"].append({"name": item.strip(), "quantity": None})
+
+    events = data.get("timeline") or data.get("history") or data.get("events") or []
+    if isinstance(events, list):
+        for event in events[:8]:
+            if not isinstance(event, dict):
+                continue
+            label = str(event.get("status") or event.get("event") or event.get("description") or "").strip()
+            time = str(event.get("timestamp") or event.get("date") or event.get("time") or "").strip()
+            location = str(event.get("location") or "").strip()
+            if label:
+                result["events"].append({"label": label, "time": time, "location": location})
+
+    return result
+
+
 def build_tool_result_event(tool_name: str, result: Any) -> dict[str, Any]:
     event: dict[str, Any] = {"result": result}
     if tool_name == "search_products" and isinstance(result, str):
@@ -295,6 +363,11 @@ def build_tool_result_event(tool_name: str, result: Any) -> dict[str, Any]:
         product = parse_product_markdown(result)
         if product.get("name") or product.get("product_id") or product.get("product_url"):
             event["product"] = product
+            event["raw"] = result
+    elif tool_name == "track_order" and isinstance(result, str):
+        tracking = parse_tracking_result(result)
+        if tracking.get("order_number") or tracking.get("status") or tracking.get("events"):
+            event["tracking"] = tracking
             event["raw"] = result
     return event
 
@@ -362,6 +435,10 @@ async def _check_delivery(city: str, delivery_date: str, product_id: str, **_) -
     return await mcp_client.call_tool("kapruka_check_delivery", {
         "city": city, "delivery_date": delivery_date, "product_id": product_id
     })
+
+
+async def _track_order(order_number: str, **_) -> Any:
+    return await mcp_client.call_tool("kapruka_track_order", {"order_number": order_number})
 
 
 async def _add_to_cart(session_id: str, product_id: str, quantity: int = 1, **_) -> str:
@@ -569,6 +646,17 @@ TOOLS_DEFINITION = [
         },
     },
     {
+        "name": "track_order",
+        "description": "Track a Kapruka order by order number and return the latest status and timeline.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_number": {"type": "string", "description": "Kapruka order number"},
+            },
+            "required": ["order_number"],
+        },
+    },
+    {
         "name": "add_to_cart",
         "description": "Add a product to the user's shopping cart. Use this when user wants to add an item.",
         "parameters": {
@@ -666,6 +754,7 @@ TOOL_MAP: dict[str, Callable] = {
     "list_categories": _list_categories,
     "list_delivery_cities": _list_delivery_cities,
     "check_delivery": _check_delivery,
+    "track_order": _track_order,
     "add_to_cart": _add_to_cart,
     "remove_from_cart": _remove_from_cart,
     "update_cart_quantity": _update_cart_quantity,

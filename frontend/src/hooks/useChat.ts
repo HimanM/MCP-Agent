@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { streamChat, type ProductSummary } from "@/lib/api";
+import { streamChat, type ProductSummary, type TrackingSummary } from "@/lib/api";
 
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   toolCalls?: { tool: string; args: Record<string, unknown> }[];
-  toolResults?: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[] }[];
+  toolResults?: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary }[];
   timestamp: number;
 }
 
@@ -34,7 +34,7 @@ export function useChat(sessionId: string) {
 
       let assistantContent = "";
       const toolCalls: { tool: string; args: Record<string, unknown> }[] = [];
-      const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[] }[] = [];
+      const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary }[] = [];
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
@@ -69,6 +69,7 @@ export function useChat(sessionId: string) {
                 raw: event.raw,
                 product: event.product,
                 products: event.products,
+                tracking: event.tracking,
               });
               setMessages((prev) => {
                 const existing = prev.find((m) => m.id === assistantId);
