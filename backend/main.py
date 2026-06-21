@@ -11,6 +11,7 @@ from mcp.client import mcp_client
 from routes.cart import router as cart_router
 from routes.chat import router as chat_router
 from routes.image_proxy import router as image_router
+from routes.mcp_debug import router as mcp_debug_router
 from routes.meta import router as meta_router
 from routes.ws import router as ws_router
 
@@ -47,6 +48,7 @@ app.include_router(cart_router)
 app.include_router(ws_router)
 app.include_router(image_router)
 app.include_router(meta_router)
+app.include_router(mcp_debug_router)
 
 
 @app.get('/health')
