@@ -19,8 +19,8 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
   if (!tracking.order_number && !tracking.status && !hasEvents) return null;
 
   return (
-    <section className="mt-4 overflow-hidden rounded-[1.6rem] border border-border bg-white shadow-[0_16px_48px_rgba(37,36,31,0.06)]">
-      <div className="flex items-start justify-between gap-4 border-b border-border bg-[linear-gradient(180deg,rgba(255,250,246,0.96),rgba(246,236,226,0.96))] px-4 py-4">
+    <section className="mt-4 overflow-hidden md:rounded-[1.6rem] md:border md:border-border md:bg-white md:shadow-[0_16px_48px_rgba(37,36,31,0.06)]">
+      <div className="flex items-start justify-between gap-4 px-1 py-3 md:border-b md:border-border md:bg-[linear-gradient(180deg,rgba(255,250,246,0.96),rgba(246,236,226,0.96))] md:px-4 md:py-4">
         <div className="flex items-start gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-full bg-[rgba(200,105,58,0.12)] text-accent">
             <PackageCheck size={18} />
@@ -40,7 +40,7 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
         ) : null}
       </div>
 
-      <div className="grid gap-4 px-4 py-4 md:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 px-1 py-3 md:grid-cols-[1.1fr_0.9fr] md:px-4 md:py-4">
         <div className="space-y-4">
           {(tracking.estimated_delivery || tracking.location) ? (
             <div className="grid gap-3 sm:grid-cols-2">

@@ -5,12 +5,13 @@ import logging
 import re
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agent.provider_selector import resolve_provider_config
 from config import settings
+from rate_limit import rate_limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -70,10 +71,31 @@ def _provider_chat_fn(provider: str):
     return None
 
 
+def _client_ip(req: Request) -> str:
+    forwarded = req.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = req.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return req.client.host if req.client else "unknown"
+
+
 @router.post('/chat')
-async def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest, request: Request):
     session_id = req.session_id or str(uuid.uuid4())
     provider_config = resolve_provider_config(req.message)
+    allowed, retry_after = await rate_limiter.check(
+        f"chat:{_client_ip(request)}",
+        settings.rate_limit_requests_per_window,
+        settings.rate_limit_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     async def event_stream():
         if _needs_order_number_prompt(req.message):

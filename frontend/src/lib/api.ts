@@ -1,4 +1,5 @@
 const BROWSER_BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const CART_WS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CART_WS !== "0";
 const API_URL = typeof window === "undefined" ? BROWSER_BACKEND_URL : "";
 
 export interface CartItem {
@@ -199,6 +200,7 @@ export async function updateBudget(sessionId: string, budget_max: number | null)
 }
 
 export function createWsUrl(sessionId: string) {
+  if (!CART_WS_ENABLED) return null;
   const base =
     BROWSER_BACKEND_URL ||
     (typeof window === "undefined" ? "http://127.0.0.1:8000" : window.location.origin);

@@ -52,7 +52,7 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
   const step = (delta: number) => setQuantity((current) => Math.max(1, current + delta));
 
   return (
-    <article className="group flex h-full min-w-0 flex-col overflow-hidden rounded-[1.1rem] border border-border bg-white shadow-[0_10px_24px_rgba(37,36,31,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-border-hover md:rounded-[1.5rem] md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
+    <article className="group flex h-full min-w-0 flex-col overflow-hidden rounded-[1rem] border border-border bg-white shadow-[0_10px_24px_rgba(37,36,31,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-border-hover md:rounded-[1.5rem] md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
       {canOpen ? (
         <Link href={productUrl} target="_blank" rel="noreferrer" className="block" aria-label={`Open ${product.name}`}>
           <div className="relative aspect-[4/3] overflow-hidden bg-surface-2 md:aspect-[4/3]">
@@ -69,7 +69,7 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
             ) : (
               <PlaceholderIcon label={product.name.charAt(0)} />
             )}
-            <div className="absolute left-3 top-3 rounded-full bg-white/92 px-2 py-1 text-[11px] font-semibold text-accent shadow-sm">
+            <div className="absolute left-2 top-2 hidden rounded-full bg-white/92 px-2 py-1 text-[11px] font-semibold text-accent shadow-sm md:inline-flex">
               Bestseller
             </div>
           </div>
@@ -92,7 +92,7 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
         </div>
       )}
 
-      <div className="flex flex-1 flex-col gap-3 p-2.5 sm:p-4">
+      <div className="flex flex-1 flex-col gap-2 p-2.5 sm:p-4">
         <div className="min-w-0 flex-1">
           {canOpen ? (
             <Link href={productUrl} target="_blank" rel="noreferrer" className="block">
@@ -103,16 +103,16 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
           ) : (
             <h3 className="line-clamp-2 text-sm font-medium leading-snug text-ink md:text-[15px]">{product.name}</h3>
           )}
-          <p className="mt-1.5 text-sm font-semibold text-ink md:mt-2 md:text-base">LKR {product.price.toLocaleString()}</p>
-          <div className="mt-1.5 flex items-center gap-1 text-[11px] text-[#b67a2f] md:mt-2 md:text-xs">
+          <p className="mt-1 text-sm font-semibold text-ink md:mt-2 md:text-base">LKR {product.price.toLocaleString()}</p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-[#b67a2f] md:mt-2 md:text-xs">
             <Star size={12} className="fill-current" />
             <span>4.8</span>
-            <span className="text-muted">(124)</span>
+            <span className="hidden text-muted md:inline">(124)</span>
           </div>
         </div>
 
-        <div className="grid gap-2 rounded-[0.9rem] border border-border bg-bg p-2 md:rounded-[1.1rem] md:p-2.5">
-          <div className="flex items-center justify-center gap-1.5 md:gap-2">
+        <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-2 md:grid md:gap-2 md:rounded-[1.1rem] md:border md:border-border md:bg-bg md:p-2.5">
+          <div className="flex items-center gap-1 md:justify-center md:gap-2">
             <button
               type="button"
               onClick={() => step(-1)}
@@ -132,13 +132,13 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-2 md:grid md:grid-cols-2">
             {canOpen ? (
               <Link
                 href={productUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-full border border-border bg-surface-2 px-2.5 text-[11px] font-medium text-ink-soft transition hover:border-accent hover:text-accent md:h-9 md:px-3 md:text-xs"
+                className="hidden h-9 min-w-0 items-center justify-center gap-1 rounded-full border border-border bg-surface-2 px-3 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-accent md:inline-flex"
               >
                 <ExternalLink size={13} />
                 View
@@ -148,10 +148,11 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
               type="button"
               onClick={handleAdd}
               disabled={isAdding}
-              className={`${canOpen ? "" : "col-span-2"} inline-flex h-8 min-w-0 items-center justify-center gap-1 rounded-full bg-accent px-2.5 text-xs font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 md:h-9 md:px-3 md:text-sm`}
+              className={`${canOpen ? "" : "md:col-span-2"} inline-flex h-9 min-w-[4.7rem] items-center justify-center gap-1 rounded-full bg-accent px-3 text-xs font-medium text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 md:h-9 md:min-w-0 md:px-3 md:text-sm`}
             >
               <ShoppingBag size={14} />
-              {showConfirm ? "Added" : isAdding ? "Adding..." : `Add ${quantity}`}
+              {showConfirm ? "Added" : isAdding ? "Adding..." : "Add"}
+              {!showConfirm && !isAdding ? <span className="hidden md:inline">{quantity}</span> : null}
             </button>
           </div>
         </div>

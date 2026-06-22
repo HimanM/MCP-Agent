@@ -77,10 +77,10 @@ export default function GiftAdvisor({
       className={
         mode === "modal"
           ? "fixed inset-x-0 bottom-0 z-[80] mx-auto w-full max-w-2xl rounded-t-[2rem] border border-border bg-bg shadow-[0_-24px_80px_rgba(37,36,31,0.18)] md:bottom-8 md:rounded-[2rem]"
-          : "mx-auto w-full max-w-5xl rounded-[1.35rem] bg-white/90 p-4 md:rounded-[2rem] md:border md:border-border md:p-8 md:shadow-[0_18px_48px_rgba(37,36,31,0.05)]"
+          : "mx-auto w-full max-w-5xl p-1 md:rounded-[2rem] md:border md:border-border md:bg-white/90 md:p-8 md:shadow-[0_18px_48px_rgba(37,36,31,0.05)]"
       }
     >
-      <div className="flex items-start justify-between gap-4 border-b border-border px-0 pb-4 md:px-0 md:pb-5">
+      <div className="flex items-start justify-between gap-4 px-0 pb-4 md:border-b md:border-border md:px-0 md:pb-5">
         <div>
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Gift advisor</p>
           <h2 className="mt-1 mimo-serif text-[1.95rem] leading-[1.02] text-ink md:text-5xl">Find a stronger gift match</h2>
@@ -110,7 +110,7 @@ export default function GiftAdvisor({
           ))}
         </div>
 
-        <div className="rounded-[1.2rem] bg-surface p-3 md:rounded-[1.5rem] md:border md:border-border md:p-5">
+        <div className="p-0 md:rounded-[1.5rem] md:border md:border-border md:bg-surface md:p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-muted">
             Step {stepIndex + 1} of {giftAdvisorSteps.length}
           </p>

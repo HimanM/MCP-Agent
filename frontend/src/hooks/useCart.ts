@@ -42,36 +42,47 @@ export function useCart(sessionId: string) {
         // ignore
       });
 
-    const ws = new WebSocket(createWsUrl(sessionId));
-    wsRef.current = ws;
+    const wsUrl = createWsUrl(sessionId);
+    if (!wsUrl) {
+      interval = setInterval(fetchCart, 5000);
+    } else {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === "cart_updated" && data.cart) {
-          setCart(data.cart);
-          setTotal(
-            data.cart.items.reduce(
-              (sum: number, i: { price: number; quantity: number }) => sum + i.price * i.quantity,
-              0
-            )
-          );
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === "cart_updated" && data.cart) {
+            setCart(data.cart);
+            setTotal(
+              data.cart.items.reduce(
+                (sum: number, i: { price: number; quantity: number }) => sum + i.price * i.quantity,
+                0
+              )
+            );
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
-    };
+      };
 
-    ws.onerror = () => {
-      if (!interval) {
-        interval = setInterval(fetchCart, 5000);
+      ws.onerror = () => {
+        if (!interval) {
+          interval = setInterval(fetchCart, 5000);
+        }
+      };
+
+      ws.onclose = () => {
+        if (!interval) {
+          interval = setInterval(fetchCart, 5000);
+        }
       }
-    };
+    }
 
     return () => {
       isActive = false;
       if (interval) clearInterval(interval);
-      ws.close();
+      wsRef.current?.close();
     };
   }, [sessionId, fetchCart]);
 

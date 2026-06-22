@@ -50,6 +50,36 @@ import { detectUiLanguage, getUiCopy, type UiLanguage } from "@/lib/ui-copy";
 type ActiveView = "home" | "chat" | "gift" | "track" | "categories" | "offers";
 type RightPanel = "cart" | "checkout" | null;
 type CategoryOption = { label: string; href?: string };
+type PageCopy = {
+  home: string;
+  newChat: string;
+  offers: string;
+  categoriesTitle: string;
+  categoriesDescription: string;
+  categoryBrowser: string;
+  categoriesHelper: string;
+  loadCategories: string;
+  noCategories: string;
+  categoryFlow: string;
+  askCategoryAi: string;
+  categoryLoading: (category: string) => string;
+  categoryPrompt: string;
+  offersTitle: string;
+  offersDescription: string;
+  offersLoader: string;
+  offersHelper: string;
+  loadOffers: string;
+  offersLoading: string;
+  noOffers: string;
+  trackTitle: string;
+  trackDescription: string;
+  orderPlaceholder: string;
+  trackButton: string;
+  noTracking: string;
+  checkoutSavedTitle: string;
+  checkoutSavedBody: string;
+  cartSummary: (count: number) => string;
+};
 
 function generateSessionId() {
   return `sess-${Math.random().toString(36).slice(2, 10)}`;
@@ -58,6 +88,99 @@ function generateSessionId() {
 const SESSION_STORAGE_KEY = "kapruka.chat.session";
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const VOICE_REPLY_STORAGE_KEY = "kapruka.chat.voiceReplies";
+
+const PAGE_COPY: Record<UiLanguage, PageCopy> = {
+  en: {
+    home: "Home",
+    newChat: "New chat",
+    offers: "Deals & Offers",
+    categoriesTitle: "Browse by category, then shop inside it.",
+    categoriesDescription: "Pick a category first. Once selected, we load matching Kapruka products into this same view so browsing feels like a real shopping step instead of a chat detour.",
+    categoryBrowser: "Category browser",
+    categoriesHelper: "Categories are loaded from the live Kapruka category tool.",
+    loadCategories: "Load categories",
+    noCategories: "No category tiles yet. Load categories first.",
+    categoryFlow: "Expected flow: choose category, review products, then add to cart or continue the chat from that category context.",
+    askCategoryAi: "Ask AI in this category",
+    categoryLoading: (category) => `Loading products for ${category}...`,
+    categoryPrompt: "Choose a category to load products here.",
+    offersTitle: "Current deals, shown as products first.",
+    offersDescription: "This section now loads the live assistant-backed deal results and renders them directly as product cards. The next expected step is simple: scan the deals, open a product, or add it to cart.",
+    offersLoader: "Offers loader",
+    offersHelper: "Live results from the current assistant and Kapruka catalog tools.",
+    loadOffers: "Load offers",
+    offersLoading: "Loading current offers...",
+    noOffers: "No offer products loaded yet.",
+    trackTitle: "Check delivery status fast.",
+    trackDescription: "Enter the Kapruka order number and get the latest tracking update without using the chat flow.",
+    orderPlaceholder: "Enter order number",
+    trackButton: "Track order",
+    noTracking: "No tracking result yet. Enter an order number to load the latest update.",
+    checkoutSavedTitle: "Checkout details saved",
+    checkoutSavedBody: "Your cart is ready for order review and payment.",
+    cartSummary: (count) => `${count} ${count === 1 ? "item" : "items"} in your cart`,
+  },
+  si: {
+    home: "මුල් පිටුව",
+    newChat: "නව චැට්",
+    offers: "වට්ටම් සහ දීමනා",
+    categoriesTitle: "කාණ්ඩයෙන් තෝරාගෙන එම ස්ථානයේම සාප්පු යන්න.",
+    categoriesDescription: "පළමුව කාණ්ඩයක් තෝරන්න. ඉන්පසු ඒ කාණ්ඩයට අදාළ Kapruka නිෂ්පාදන මෙතැනම පෙන්වයි.",
+    categoryBrowser: "කාණ්ඩ බ්‍රවුසරය",
+    categoriesHelper: "කාණ්ඩ සජීවී Kapruka category tool එකෙන් ලබාගනී.",
+    loadCategories: "කාණ්ඩ පූරණය කරන්න",
+    noCategories: "තවම කාණ්ඩ නොමැත. පළමුව කාණ්ඩ පූරණය කරන්න.",
+    categoryFlow: "ගමන්මග: කාණ්ඩය තෝරන්න, නිෂ්පාදන බලන්න, cart එකට එක් කරන්න හෝ ඒ කාණ්ඩයට අදාලව AI සමඟ ඉදිරියට යන්න.",
+    askCategoryAi: "මෙම කාණ්ඩයට AI අසන්න",
+    categoryLoading: (category) => `${category} සඳහා නිෂ්පාදන පූරණය වෙමින්...`,
+    categoryPrompt: "නිෂ්පාදන පෙන්වීමට කාණ්ඩයක් තෝරන්න.",
+    offersTitle: "දැන් ඇති දීමනා, නිෂ්පාදන ලෙසම පෙන්වයි.",
+    offersDescription: "මෙම කොටස live assistant-backed deals ප්‍රතිඵල සෘජුව product cards ලෙස පෙන්වයි.",
+    offersLoader: "දීමනා පූරණය",
+    offersHelper: "වර්තමාන assistant සහ Kapruka catalog tools වලින් සජීවී ප්‍රතිඵල.",
+    loadOffers: "දීමනා පූරණය කරන්න",
+    offersLoading: "වත්මන් දීමනා පූරණය වෙමින්...",
+    noOffers: "තවම offer නිෂ්පාදන පූරණය වී නැත.",
+    trackTitle: "බෙදාහැරීමේ තත්ත්වය ඉක්මනින් බලන්න.",
+    trackDescription: "Kapruka order number එක ඇතුළත් කර chat flow නොමැතිවම tracking update එක ලබාගන්න.",
+    orderPlaceholder: "Order number එක ඇතුළත් කරන්න",
+    trackButton: "Track කරන්න",
+    noTracking: "තවම tracking ප්‍රතිඵලයක් නැත. Order number එකක් ඇතුළත් කරන්න.",
+    checkoutSavedTitle: "Checkout විස්තර සුරකින ලදි",
+    checkoutSavedBody: "ඔබගේ cart එක order review සහ payment සඳහා සූදානම්.",
+    cartSummary: (count) => `cart එකේ ${count} ${count === 1 ? "item" : "items"}`,
+  },
+  ta: {
+    home: "முகப்பு",
+    newChat: "புதிய அரட்டை",
+    offers: "சலுகைகள்",
+    categoriesTitle: "பிரிவைத் தேர்ந்து அதிலேயே வாங்குங்கள்.",
+    categoriesDescription: "முதலில் ஒரு category-ஐ தேர்ந்தெடுக்கவும். பிறகு அதற்கான Kapruka products இதே view-ல் வரும்.",
+    categoryBrowser: "பிரிவு உலாவி",
+    categoriesHelper: "பிரிவுகள் live Kapruka category tool மூலம் ஏற்றப்படுகின்றன.",
+    loadCategories: "பிரிவுகளை ஏற்று",
+    noCategories: "இன்னும் பிரிவுகள் இல்லை. முதலில் பிரிவுகளை ஏற்றவும்.",
+    categoryFlow: "Flow: பிரிவைத் தேர்வுசெய், products பார், cart-க்கு சேர் அல்லது அந்தப் பிரிவில் AI உதவியை கேள்.",
+    askCategoryAi: "இந்த பிரிவில் AI-யை கேள்",
+    categoryLoading: (category) => `${category} products ஏற்றப்படுகிறது...`,
+    categoryPrompt: "இங்கே products பார்க்க ஒரு category-ஐ தேர்ந்தெடுக்கவும்.",
+    offersTitle: "தற்போதைய சலுகைகள், நேராக products ஆக.",
+    offersDescription: "இந்த பகுதி live deals முடிவுகளை நேராக product cards ஆக காட்டும்.",
+    offersLoader: "சலுகை ஏற்றி",
+    offersHelper: "நடப்பு assistant மற்றும் Kapruka catalog tools இலிருந்து live results.",
+    loadOffers: "சலுகைகளை ஏற்று",
+    offersLoading: "தற்போதைய சலுகைகள் ஏற்றப்படுகிறது...",
+    noOffers: "இன்னும் offer products ஏற்றப்படவில்லை.",
+    trackTitle: "டெலிவரி நிலையை விரைவாக பார்க்கவும்.",
+    trackDescription: "Kapruka order number-ஐ உள்ளிட்டு chat இல்லாமல் latest tracking update பெறுங்கள்.",
+    orderPlaceholder: "Order number-ஐ உள்ளிடவும்",
+    trackButton: "Track செய்",
+    noTracking: "இன்னும் tracking result இல்லை. Order number-ஐ உள்ளிடவும்.",
+    checkoutSavedTitle: "Checkout விவரங்கள் சேமிக்கப்பட்டது",
+    checkoutSavedBody: "உங்கள் cart order review மற்றும் payment க்குத் தயாராக உள்ளது.",
+    cartSummary: (count) => `உங்கள் cart-ல் ${count} ${count === 1 ? "item" : "items"}`,
+  },
+};
 
 const CATEGORY_PROMPT: Record<UiLanguage, string> = {
   en: "Show me Kapruka product categories",
@@ -99,10 +222,14 @@ function loadVoiceRepliesEnabled() {
   }
 }
 
-function BrandMark() {
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] text-accent shadow-[0_10px_28px_rgba(200,105,58,0.18)]">
-      <Sparkles size={20} />
+    <div
+      className={`grid place-items-center bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] text-accent shadow-[0_10px_28px_rgba(200,105,58,0.18)] ${
+        compact ? "h-9 w-9 rounded-xl" : "h-11 w-11 rounded-2xl"
+      }`}
+    >
+      <Sparkles size={compact ? 18 : 20} />
     </div>
   );
 }
@@ -139,7 +266,7 @@ function ActionChip({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[1.2rem] border border-border bg-white px-4 py-2.5 text-sm font-medium text-ink shadow-[0_10px_24px_rgba(88,54,30,0.05)] hover:-translate-y-0.5 hover:border-border-hover md:min-h-12 md:w-auto md:justify-start md:gap-3 md:rounded-full md:px-5 md:py-3"
+      className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[1.2rem] border border-border bg-white px-4 py-2.5 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-border-hover md:min-h-12 md:w-auto md:justify-start md:gap-3 md:rounded-full md:px-5 md:py-3 md:shadow-[0_10px_24px_rgba(88,54,30,0.05)]"
     >
       <span className="text-accent">{icon}</span>
       <span>{label}</span>
@@ -270,6 +397,10 @@ function MobileDrawer({
   onToggleListening,
   onToggleVoiceReplies,
   onNewChat,
+  copy,
+  giftAdvisorLabel,
+  trackOrderLabel,
+  browseCategoriesLabel,
 }: {
   activeView: ActiveView;
   onChange: (view: ActiveView) => void;
@@ -284,13 +415,17 @@ function MobileDrawer({
   onToggleListening: () => void;
   onToggleVoiceReplies: () => void;
   onNewChat: () => void;
+  copy: PageCopy;
+  giftAdvisorLabel: string;
+  trackOrderLabel: string;
+  browseCategoriesLabel: string;
 }) {
   const items: { icon: React.ReactNode; label: string; view: ActiveView }[] = [
-    { icon: <Home size={18} />, label: "Home", view: "home" },
-    { icon: <Gift size={18} />, label: "Gift Advisor", view: "gift" },
-    { icon: <Truck size={18} />, label: "Track Order", view: "track" },
-    { icon: <Grid2x2 size={18} />, label: "Categories", view: "categories" },
-    { icon: <Tag size={18} />, label: "Offers", view: "offers" },
+    { icon: <Home size={18} />, label: copy.home, view: "home" },
+    { icon: <Gift size={18} />, label: giftAdvisorLabel, view: "gift" },
+    { icon: <Truck size={18} />, label: trackOrderLabel, view: "track" },
+    { icon: <Grid2x2 size={18} />, label: browseCategoriesLabel, view: "categories" },
+    { icon: <Tag size={18} />, label: copy.offers, view: "offers" },
   ];
 
   return (
@@ -301,7 +436,7 @@ function MobileDrawer({
         aria-label="Close navigation drawer"
         onClick={onClose}
       />
-      <div className="glass-panel fixed inset-y-3 left-3 z-50 flex w-[min(84vw,22rem)] flex-col rounded-[2rem] p-4 lg:hidden">
+      <div className="fixed inset-0 z-50 flex flex-col bg-[rgba(255,250,246,0.94)] px-5 py-5 backdrop-blur-xl lg:hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BrandMark />
@@ -334,7 +469,7 @@ function MobileDrawer({
           ))}
           <SidebarLink
             icon={<Search size={18} />}
-            label="New chat"
+            label={copy.newChat}
             onClick={() => {
               onNewChat();
               onClose();
@@ -415,21 +550,21 @@ function TrackOrderPanel({
   tracking,
   isLoading,
   onSubmit,
+  copy,
 }: {
   tracking: TrackingSummary | null;
   isLoading: boolean;
   onSubmit: (orderNumber: string) => void;
+  copy: PageCopy;
 }) {
   const [orderNumber, setOrderNumber] = useState("");
 
   return (
-    <section className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <div className="rounded-[1.35rem] bg-white/90 p-4 md:rounded-[2rem] md:border md:border-border md:p-8 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
+    <section className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <div className="p-1 md:rounded-[2rem] md:border md:border-border md:bg-white/90 md:p-8 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
         <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Track order</p>
-        <h1 className="mimo-serif mt-2 text-[2rem] leading-[1.02] text-ink md:text-6xl">Check delivery status fast.</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-soft md:text-base md:leading-7">
-          Enter the Kapruka order number and get the latest tracking update without using the chat flow.
-        </p>
+        <h1 className="mimo-serif mt-2 text-[2rem] leading-[1.02] text-ink md:text-6xl">{copy.trackTitle}</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-soft md:text-base md:leading-7">{copy.trackDescription}</p>
 
         <form
           onSubmit={(event) => {
@@ -442,15 +577,15 @@ function TrackOrderPanel({
           <input
             value={orderNumber}
             onChange={(event) => setOrderNumber(event.target.value)}
-            placeholder="Enter order number"
-            className="h-12 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent"
+            placeholder={copy.orderPlaceholder}
+            className="h-14 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent md:h-12"
           />
           <button
             type="submit"
             disabled={isLoading}
             className="h-12 rounded-2xl bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {isLoading ? "Checking..." : "Track order"}
+            {isLoading ? "Checking..." : copy.trackButton}
           </button>
         </form>
       </div>
@@ -458,8 +593,8 @@ function TrackOrderPanel({
       {tracking ? (
         <TrackingCard tracking={tracking} />
       ) : (
-        <div className="rounded-[1.8rem] border border-dashed border-border bg-white/80 px-6 py-10 text-center text-sm text-ink-soft">
-          No tracking result yet. Enter an order number to load the latest update.
+        <div className="px-2 py-6 text-center text-sm text-ink-soft md:rounded-[1.8rem] md:border md:border-dashed md:border-border md:bg-white/80 md:px-6 md:py-10">
+          {copy.noTracking}
         </div>
       )}
     </section>
@@ -478,8 +613,8 @@ function WorkflowPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="rounded-[1.35rem] bg-white/90 p-4 md:rounded-[2rem] md:border md:border-border md:p-8 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
+    <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="p-1 md:rounded-[2rem] md:border md:border-border md:bg-white/90 md:p-8 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
         <p className="text-[11px] uppercase tracking-[0.16em] text-muted">{eyebrow}</p>
         <h1 className="mimo-serif mt-2 text-[2rem] leading-[1.02] text-ink md:text-6xl">{title}</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-soft md:text-base md:leading-7">{description}</p>
@@ -526,6 +661,7 @@ export default function HomePage() {
   const lastSpokenAssistantRef = useRef("");
 
   const uiCopy = getUiCopy(uiLanguage);
+  const pageCopy = PAGE_COPY[uiLanguage];
   const cartCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
   const categoryPrompt = CATEGORY_PROMPT[uiLanguage];
   const budgetValue = budgetDraft || (cart.budget_max != null ? String(cart.budget_max) : "");
@@ -795,7 +931,7 @@ export default function HomePage() {
     { icon: <Gift size={18} />, label: uiCopy.openGiftAdvisor, action: () => activateView("gift") },
     { icon: <Truck size={18} />, label: uiCopy.trackMyOrder, action: () => activateView("track") },
     { icon: <Grid2x2 size={18} />, label: uiCopy.browseCategories, action: () => activateView("categories") },
-    { icon: <Tag size={18} />, label: "Deals & Offers", action: () => activateView("offers") },
+    { icon: <Tag size={18} />, label: pageCopy.offers, action: () => activateView("offers") },
   ];
 
   const suggestionActions = uiCopy.suggestions.map((suggestion) => ({
@@ -827,14 +963,14 @@ export default function HomePage() {
               <Package size={18} />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink">Checkout details saved</p>
-              <p className="mt-1 text-sm text-ink-soft">Your cart is ready for order review and payment.</p>
+              <p className="text-sm font-semibold text-ink">{pageCopy.checkoutSavedTitle}</p>
+              <p className="mt-1 text-sm text-ink-soft">{pageCopy.checkoutSavedBody}</p>
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="mx-auto flex h-full max-w-[1720px] gap-4 px-3 py-3 md:px-5 md:py-4">
+      <div className="mx-auto flex h-full max-w-[1880px] gap-4 px-3 py-3 md:px-5 md:py-4">
         <aside className="glass-panel hidden w-[280px] shrink-0 rounded-[2rem] p-5 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
             <BrandMark />
@@ -843,17 +979,17 @@ export default function HomePage() {
                 <span className="mimo-serif text-ink">Kapruka</span>
                 <span className="mimo-serif text-accent">AI</span>
               </div>
-              <p className="mt-1 text-sm text-ink-soft">Sri Lanka&apos;s shopping assistant</p>
+              <p className="mt-1 text-sm text-ink-soft">{uiCopy.assistantLabel}</p>
             </div>
           </div>
 
           <div className="mt-8 space-y-2">
-            <SidebarLink icon={<Home size={18} />} label="Home" active={activeView === "home"} onClick={() => activateView("home")} />
+            <SidebarLink icon={<Home size={18} />} label={pageCopy.home} active={activeView === "home"} onClick={() => activateView("home")} />
             <SidebarLink icon={<Gift size={18} />} label="Gift Advisor" active={activeView === "gift"} onClick={() => activateView("gift")} />
             <SidebarLink icon={<Truck size={18} />} label="Track Order" active={activeView === "track"} onClick={() => activateView("track")} />
             <SidebarLink icon={<Grid2x2 size={18} />} label="Browse Categories" active={activeView === "categories"} onClick={() => activateView("categories")} />
-            <SidebarLink icon={<Tag size={18} />} label="Deals & Offers" active={activeView === "offers"} onClick={() => activateView("offers")} />
-            <SidebarLink icon={<Search size={18} />} label="New chat" onClick={handleNewChat} />
+            <SidebarLink icon={<Tag size={18} />} label={pageCopy.offers} active={activeView === "offers"} onClick={() => activateView("offers")} />
+            <SidebarLink icon={<Search size={18} />} label={pageCopy.newChat} onClick={handleNewChat} />
           </div>
 
           <div className="mt-auto space-y-4">
@@ -871,7 +1007,7 @@ export default function HomePage() {
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <header className="flex items-center justify-between gap-3 px-1">
-            <div className="flex items-center gap-2 lg:hidden">
+            <div className="flex w-full items-center gap-2 lg:hidden">
               <button
                 type="button"
                 className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-white text-ink"
@@ -880,17 +1016,16 @@ export default function HomePage() {
               >
                 <Menu size={18} />
               </button>
-              <div className="flex items-center gap-2 rounded-[1.25rem] border border-border bg-white px-3 py-2">
-                <BrandMark />
-                <div>
-                  <p className="mimo-serif text-[1.45rem] leading-none text-ink">Kapruka <span className="text-accent">AI</span></p>
-                  <p className="text-[11px] leading-tight text-ink-soft">Sri Lanka&apos;s shopping assistant</p>
-                </div>
+              <div className="flex min-w-0 flex-1 items-center gap-2 pl-1">
+                <BrandMark compact />
+                <p className="truncate mimo-serif text-[1.3rem] leading-none text-ink">
+                  Kapruka <span className="text-accent">AI</span>
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => openRightPanel("cart")}
-                className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-white text-ink"
+                className="ml-auto grid h-10 w-10 place-items-center rounded-2xl border border-border bg-white text-ink"
                 aria-label="Open cart panel"
               >
                 <ShoppingBag size={18} />
@@ -929,19 +1064,17 @@ export default function HomePage() {
           </header>
 
           <div className="flex min-h-0 flex-1">
-            <main className="flex min-w-0 flex-1 flex-col rounded-[2rem] bg-white/72 shadow-[0_14px_40px_rgba(37,36,31,0.05)] ring-1 ring-[rgba(230,214,200,0.72)] lg:glass-panel lg:shadow-none lg:ring-0">
-              <div className="flex-1 overflow-y-auto px-3 pb-4 pt-4 md:px-8 md:pb-6 md:pt-6">
+            <main className="flex min-w-0 flex-1 flex-col lg:glass-panel lg:rounded-[2rem] lg:shadow-none lg:ring-0">
+              <div className="flex-1 overflow-y-auto px-3 pb-4 pt-4 md:px-8 md:pb-6 md:pt-6 lg:px-10">
                 {showHero ? (
-                  <section className="mx-auto flex min-h-full max-w-5xl flex-col items-center justify-center px-1 text-center">
+                  <section className="mx-auto flex min-h-full max-w-6xl flex-col items-center justify-center px-1 text-center">
                     <p className="text-xs text-ink-soft md:text-sm">{uiCopy.assistantLabel}</p>
                     <h1 className="mimo-serif mt-2 max-w-4xl text-[1.9rem] leading-[0.98] text-ink sm:mt-4 sm:text-[4rem] lg:text-[5.3rem]">
-                      Shop Sri Lanka,
-                      <br />
-                      thoughtfully.
+                      {uiCopy.heroTitle}
                     </h1>
                     <div className="hero-divider my-4 md:my-5" />
                     <p className="max-w-2xl text-sm leading-7 text-ink-soft md:text-lg">
-                      Hi. I&apos;m Kapruka AI. I can help you discover gifts, browse categories, track orders, and move into checkout without losing the conversation.
+                      {uiCopy.heroDescription}
                     </p>
 
                     <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-7 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
@@ -950,8 +1083,8 @@ export default function HomePage() {
                       ))}
                     </div>
 
-                    <div className="mt-5 w-full max-w-md rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(250,239,229,0.88),rgba(255,255,255,0.92))] px-5 py-4 md:mt-8 md:max-w-none md:rounded-[1.6rem] md:border md:border-[rgba(200,105,58,0.12)] md:px-6 md:py-5 md:shadow-[0_12px_30px_rgba(88,54,30,0.05)]">
-                      <p className="text-base text-ink">Find a premium gift for a wedding under LKR 15,000</p>
+                    <div className="mt-5 w-full max-w-md px-2 py-2 md:mt-8 md:max-w-none md:rounded-[1.6rem] md:border md:border-[rgba(200,105,58,0.12)] md:bg-[linear-gradient(180deg,rgba(250,239,229,0.88),rgba(255,255,255,0.92))] md:px-6 md:py-5 md:shadow-[0_12px_30px_rgba(88,54,30,0.05)]">
+                      <p className="text-base text-ink">{uiCopy.heroExample}</p>
                     </div>
 
                     <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-8 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
@@ -973,54 +1106,55 @@ export default function HomePage() {
                   </div>
                 ) : activeView === "track" ? (
                   <div className="flex min-h-full items-start justify-center py-1 md:items-center md:py-6">
-                    <TrackOrderPanel tracking={latestTracking} isLoading={isStreaming} onSubmit={handleTrackSubmit} />
+                    <TrackOrderPanel tracking={latestTracking} isLoading={isStreaming} onSubmit={handleTrackSubmit} copy={pageCopy} />
                   </div>
                 ) : activeView === "categories" ? (
                   <WorkflowPanel
-                    eyebrow="Categories"
-                    title="Browse by category, then shop inside it."
-                    description="Pick a category first. Once selected, we load matching Kapruka products into this same view so browsing feels like a real shopping step instead of a chat detour."
+                    eyebrow={uiCopy.browseCategories}
+                    title={pageCopy.categoriesTitle}
+                    description={pageCopy.categoriesDescription}
                   >
-                    <div className="rounded-[1.8rem] border border-border bg-white/90 p-6 shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
+                    <div className="p-1 md:rounded-[1.8rem] md:border md:border-border md:bg-white/90 md:p-6 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-ink">Category browser</p>
-                          <p className="mt-1 text-sm text-ink-soft">Categories are loaded from the live Kapruka category tool.</p>
+                          <p className="text-sm font-medium text-ink">{pageCopy.categoryBrowser}</p>
+                          <p className="mt-1 text-sm text-ink-soft">{pageCopy.categoriesHelper}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void loadCategories()}
                           className="rounded-2xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover"
                         >
-                          {categoryLoading ? "Loading..." : "Load categories"}
+                          {categoryLoading ? "Loading..." : pageCopy.loadCategories}
                         </button>
                       </div>
 
-                      <div className="mt-5 flex flex-wrap gap-3">
+                      <div className="mt-5 grid grid-cols-4 gap-2 md:flex md:flex-wrap md:gap-3">
                         {categoryList.length ? (
                           categoryList.map((category) => (
                             <button
                               key={category.label}
                               type="button"
                               onClick={() => void loadCategoryProducts(category.label)}
-                              className={`rounded-full border px-4 py-2.5 text-sm ${
+                              className={`min-w-0 truncate rounded-full border px-2.5 py-2 text-xs ${
                                 selectedCategory === category.label
                                   ? "border-accent bg-accent text-white"
                                   : "border-border bg-bg text-ink hover:border-border-hover"
-                              }`}
+                              } md:px-4 md:py-2.5 md:text-sm`}
+                              title={category.label}
                             >
                               {category.label}
                             </button>
                           ))
                         ) : (
-                          <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-8 text-sm text-ink-soft">
-                            No category tiles yet. Load categories first.
+                          <div className="col-span-4 px-2 py-6 text-sm text-ink-soft md:rounded-2xl md:border md:border-dashed md:border-border md:bg-bg md:px-4 md:py-8">
+                            {pageCopy.noCategories}
                           </div>
                         )}
                       </div>
 
                       {categoryError ? (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-danger">
+                        <div className="mt-4 px-2 py-1 text-sm text-danger md:rounded-2xl md:border md:border-red-200 md:bg-red-50 md:px-4 md:py-3">
                           {categoryError}
                         </div>
                       ) : null}
@@ -1030,29 +1164,29 @@ export default function HomePage() {
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <p className="text-sm font-medium text-ink">{selectedCategory}</p>
-                              <p className="mt-1 text-sm text-ink-soft">Expected flow: choose category, review products, then add to cart or continue the chat from that category context.</p>
+                              <p className="mt-1 text-sm text-ink-soft">{pageCopy.categoryFlow}</p>
                             </div>
                             <button
                               type="button"
                               onClick={() => dispatchPrompt(`Help me choose the best ${selectedCategory} item for my needs`, "chat")}
                               className="rounded-2xl border border-border bg-bg px-4 py-2.5 text-sm font-medium text-ink hover:border-border-hover"
                             >
-                              Ask AI in this category
+                              {pageCopy.askCategoryAi}
                             </button>
                           </div>
 
-                          <div className="mt-5 grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-3">
+                          <div className="mt-5 grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
                             {categoryProducts.length ? (
                               categoryProducts.map((product) => (
                                 <ProductCard key={product.product_id} product={product} sessionId={sessionId} onAdded={refresh} />
                               ))
                             ) : categoryProductsLoading ? (
-                              <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-8 text-sm text-ink-soft col-span-2 xl:col-span-3">
-                                Loading products for {selectedCategory}...
+                              <div className="col-span-2 px-2 py-6 text-sm text-ink-soft md:rounded-2xl md:border md:border-dashed md:border-border md:bg-bg md:px-4 md:py-8 xl:col-span-4">
+                                {pageCopy.categoryLoading(selectedCategory)}
                               </div>
                             ) : (
-                              <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-8 text-sm text-ink-soft col-span-2 xl:col-span-3">
-                                Choose a category to load products here.
+                              <div className="col-span-2 px-2 py-6 text-sm text-ink-soft md:rounded-2xl md:border md:border-dashed md:border-border md:bg-bg md:px-4 md:py-8 xl:col-span-4">
+                                {pageCopy.categoryPrompt}
                               </div>
                             )}
                           </div>
@@ -1062,32 +1196,32 @@ export default function HomePage() {
                   </WorkflowPanel>
                 ) : activeView === "offers" ? (
                   <WorkflowPanel
-                    eyebrow="Deals"
-                    title="Current deals, shown as products first."
-                    description="This section now loads the live assistant-backed deal results and renders them directly as product cards. The next expected step is simple: scan the deals, open a product, or add it to cart."
+                    eyebrow={pageCopy.offers}
+                    title={pageCopy.offersTitle}
+                    description={pageCopy.offersDescription}
                   >
-                    <div className="rounded-[1.8rem] border border-border bg-white/90 p-6 shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
+                    <div className="p-1 md:rounded-[1.8rem] md:border md:border-border md:bg-white/90 md:p-6 md:shadow-[0_14px_40px_rgba(37,36,31,0.05)]">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-ink">Offers loader</p>
-                          <p className="mt-1 text-sm text-ink-soft">Live results from the current assistant and Kapruka catalog tools.</p>
+                          <p className="text-sm font-medium text-ink">{pageCopy.offersLoader}</p>
+                          <p className="mt-1 text-sm text-ink-soft">{pageCopy.offersHelper}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void loadOffers()}
                           className="rounded-2xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover"
                         >
-                          {offersLoading ? "Loading..." : "Load offers"}
+                          {offersLoading ? "Loading..." : pageCopy.loadOffers}
                         </button>
                       </div>
 
                       {offersError ? (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-danger">
+                        <div className="mt-4 px-2 py-1 text-sm text-danger md:rounded-2xl md:border md:border-red-200 md:bg-red-50 md:px-4 md:py-3">
                           {offersError}
                         </div>
                       ) : null}
 
-                      <div className="mt-6 grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-3">
+                      <div className="mt-6 grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
                         {offerProducts.length ? (
                           offerProducts.map((product) => (
                             <ProductCard
@@ -1098,19 +1232,19 @@ export default function HomePage() {
                             />
                           ))
                         ) : offersLoading ? (
-                          <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-8 text-sm text-ink-soft col-span-2 xl:col-span-3">
-                            Loading current offers...
+                          <div className="col-span-2 px-2 py-6 text-sm text-ink-soft md:rounded-2xl md:border md:border-dashed md:border-border md:bg-bg md:px-4 md:py-8 xl:col-span-4">
+                            {pageCopy.offersLoading}
                           </div>
                         ) : (
-                          <div className="rounded-2xl border border-dashed border-border bg-bg px-4 py-8 text-sm text-ink-soft col-span-2 xl:col-span-3">
-                            No offer products loaded yet.
+                          <div className="col-span-2 px-2 py-6 text-sm text-ink-soft md:rounded-2xl md:border md:border-dashed md:border-border md:bg-bg md:px-4 md:py-8 xl:col-span-4">
+                            {pageCopy.noOffers}
                           </div>
                         )}
                       </div>
                     </div>
                   </WorkflowPanel>
                 ) : (
-                  <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+                  <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -1163,14 +1297,14 @@ export default function HomePage() {
               </div>
 
               {showComposer ? (
-                <div className="border-t border-border/80 px-3 py-3 md:px-6 md:py-5">
+                <div className="px-0 py-3 md:border-t md:border-border/80 md:px-6 md:py-5">
                   <div className="mx-auto flex max-w-5xl flex-col gap-3">
                     <form
                       onSubmit={(event) => {
                         event.preventDefault();
                         submitCurrentMessage();
                       }}
-                      className="flex items-center gap-2 rounded-[1.35rem] border border-border bg-white px-3 py-2.5 shadow-[0_14px_34px_rgba(88,54,30,0.06)] md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3"
+                      className="flex items-center gap-2 rounded-[1.35rem] border border-border bg-white px-3 py-2.5 md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3 md:shadow-[0_14px_34px_rgba(88,54,30,0.06)]"
                     >
                       <button
                         type="button"
@@ -1233,7 +1367,7 @@ export default function HomePage() {
               <p className="text-sm text-ink-soft">
                 {rightPanel === "checkout"
                   ? "Saved delivery details and order summary"
-                  : `${cartCount} ${cartCount === 1 ? "item" : "items"} in your cart`}
+                  : pageCopy.cartSummary(cartCount)}
               </p>
             </div>
             <button
@@ -1338,6 +1472,10 @@ export default function HomePage() {
           onToggleListening={toggleListening}
           onToggleVoiceReplies={() => setVoiceRepliesEnabled((current) => !current)}
           onNewChat={handleNewChat}
+          copy={pageCopy}
+          giftAdvisorLabel={uiCopy.giftAdvisor}
+          trackOrderLabel={uiCopy.trackOrder}
+          browseCategoriesLabel={uiCopy.browseCategories}
         />
       ) : null}
     </div>
