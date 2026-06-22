@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = ""
     openrouter_fast_model: str = "openai/gpt-4o-mini"
-    openrouter_reasoning_model: str = "openai/gpt-4.1"
+    # ponytail: use one cheap default unless a deployer explicitly opts into a pricier OpenRouter reasoning model.
+    openrouter_reasoning_model: str = "openai/gpt-4o-mini"
     openrouter_site_url: str = "http://localhost:3000"
     openrouter_app_name: str = "Kapruka Shopper"
 
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     session_ttl_seconds: int = 3600
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    rate_limit_requests_per_window: int = 20
+    rate_limit_window_seconds: int = 60
 
     @property
     def cors_origin_list(self) -> list[str]:

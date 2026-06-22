@@ -7,3 +7,9 @@ node_modules/
 .venv/
 venv/
 dist/
+/.tmp-playwright
+*.err
+docs/superpowers/
+docs/feature-checklists/
+docs/ui-functionality-brief.md
+kapruka-mcp-analysis.md

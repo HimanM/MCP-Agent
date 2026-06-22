@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/backend";
 
 export async function GET() {

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from agent.tools import _search_products, build_tool_result_event, coerce_tool_args, format_tool_result_for_model, parse_failed_tool_generation, parse_product_markdown, parse_search_products_markdown
+from agent.tools import _search_products, build_tool_result_event, coerce_tool_args, format_tool_result_for_model, parse_checkout_result, parse_failed_tool_generation, parse_product_markdown, parse_search_products_markdown, parse_tracking_result
 
 
 class ToolArgSanitizerTest(unittest.TestCase):
@@ -114,6 +114,53 @@ class ToolArgSanitizerTest(unittest.TestCase):
             "limit": 10,
             "sort": "relevance",
         }))
+
+    def test_parses_tracking_result_and_emits_tracking_event(self):
+        tracking_json = """{
+            "order_number": "12345678",
+            "status": "Out for delivery",
+            "recipient_name": "Alex",
+            "estimated_delivery": "2026-06-30",
+            "current_location": "Colombo",
+            "items": [{"name": "Chocolate Box", "quantity": 1}],
+            "timeline": [
+                {"status": "Out for delivery", "timestamp": "2026-06-29 10:30", "location": "Colombo"},
+                {"status": "Processed", "timestamp": "2026-06-28 18:00"}
+            ]
+        }"""
+
+        parsed = parse_tracking_result(tracking_json)
+        self.assertEqual(parsed["order_number"], "12345678")
+        self.assertEqual(parsed["status"], "Out for delivery")
+        self.assertEqual(parsed["recipient"], "Alex")
+        self.assertEqual(parsed["items"][0]["name"], "Chocolate Box")
+        self.assertEqual(parsed["events"][0]["label"], "Out for delivery")
+
+        event = build_tool_result_event("track_order", tracking_json)
+        self.assertIn("tracking", event)
+        self.assertEqual(event["tracking"]["location"], "Colombo")
+
+    def test_parses_checkout_result_and_emits_order_event(self):
+        checkout_json = """{
+            "order_number": "ORD-12345",
+            "payment_url": "https://pay.kapruka.com/checkout/ORD-12345",
+            "total": {"amount": 12500, "currency": "LKR"},
+            "expires_at": "2026-06-21T20:00:00+05:30"
+        }"""
+
+        parsed = parse_checkout_result(checkout_json)
+        self.assertEqual(parsed["order_number"], "ORD-12345")
+        self.assertEqual(parsed["payment_url"], "https://pay.kapruka.com/checkout/ORD-12345")
+        self.assertEqual(parsed["total"], 12500)
+        self.assertEqual(parsed["currency"], "LKR")
+
+        event = build_tool_result_event("checkout", checkout_json)
+        self.assertIn("order", event)
+        self.assertEqual(event["order"]["expires_at"], "2026-06-21T20:00:00+05:30")
+
+    def test_checkout_missing_info_stays_plain_text(self):
+        event = build_tool_result_event("checkout", "MISSING_INFO: recipient phone, delivery date")
+        self.assertNotIn("order", event)
 
 
 if __name__ == "__main__":
