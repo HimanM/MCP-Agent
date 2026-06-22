@@ -1,8 +1,9 @@
 "use client";
 
+import { MapPin, PackageCheck } from "lucide-react";
 import type { TrackingSummary } from "@/lib/api";
 
-function StatusTone(status: string) {
+function statusTone(status: string) {
   const normalized = status.toLowerCase();
   if (normalized.includes("deliver")) return "bg-emerald-50 text-emerald-800 border-emerald-200";
   if (normalized.includes("ship") || normalized.includes("transit")) return "bg-sky-50 text-sky-800 border-sky-200";
@@ -18,19 +19,22 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
   if (!tracking.order_number && !tracking.status && !hasEvents) return null;
 
   return (
-    <section className="mt-4 overflow-hidden rounded-[1.5rem] border border-border bg-surface shadow-[0_16px_48px_rgba(37,36,31,0.06)]">
-      <div className="flex items-start justify-between gap-4 border-b border-border bg-gradient-to-r from-surface to-surface-2 px-4 py-4">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Order tracking</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight text-ink">
-            {tracking.order_number ? `#${tracking.order_number}` : "Latest order update"}
-          </h3>
-          {tracking.recipient ? (
-            <p className="mt-1 text-sm text-ink-soft">Recipient: {tracking.recipient}</p>
-          ) : null}
+    <section className="mt-4 overflow-hidden rounded-[1.6rem] border border-border bg-white shadow-[0_16px_48px_rgba(37,36,31,0.06)]">
+      <div className="flex items-start justify-between gap-4 border-b border-border bg-[linear-gradient(180deg,rgba(255,250,246,0.96),rgba(246,236,226,0.96))] px-4 py-4">
+        <div className="flex items-start gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-full bg-[rgba(200,105,58,0.12)] text-accent">
+            <PackageCheck size={18} />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Order tracking</p>
+            <h3 className="mt-1 text-lg font-semibold tracking-tight text-ink">
+              {tracking.order_number ? `#${tracking.order_number}` : "Latest order update"}
+            </h3>
+            {tracking.recipient ? <p className="mt-1 text-sm text-ink-soft">Recipient: {tracking.recipient}</p> : null}
+          </div>
         </div>
         {tracking.status ? (
-          <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize ${StatusTone(tracking.status)}`}>
+          <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize ${statusTone(tracking.status)}`}>
             {tracking.status}
           </span>
         ) : null}
@@ -49,7 +53,10 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
               {tracking.location ? (
                 <div className="rounded-2xl border border-border bg-bg px-4 py-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Current location</p>
-                  <p className="mt-1 text-sm font-medium text-ink">{tracking.location}</p>
+                  <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink">
+                    <MapPin size={13} className="text-accent" />
+                    {tracking.location}
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -64,9 +71,7 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
                     <span className={`absolute left-0 top-1.5 h-3 w-3 rounded-full ${index === 0 ? "bg-accent" : "bg-border-hover"}`} />
                     <p className="text-sm font-medium text-ink">{event.label}</p>
                     {(event.time || event.location) ? (
-                      <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                        {[event.time, event.location].filter(Boolean).join(" - ")}
-                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-ink-soft">{[event.time, event.location].filter(Boolean).join(" · ")}</p>
                     ) : null}
                   </li>
                 ))}
@@ -79,22 +84,20 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
           )}
         </div>
 
-        <div>
-          <div className="rounded-2xl border border-border bg-bg px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Items</p>
-            {hasItems ? (
-              <ul className="mt-4 space-y-3">
-                {tracking.items.map((item, index) => (
-                  <li key={`${item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
-                    <span className="min-w-0 flex-1 text-ink">{item.name}</span>
-                    {item.quantity ? <span className="shrink-0 text-ink-soft">x{item.quantity}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-4 text-sm text-ink-soft">Item details were not included in the tracking response.</p>
-            )}
-          </div>
+        <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Items</p>
+          {hasItems ? (
+            <ul className="mt-4 space-y-3">
+              {tracking.items.map((item, index) => (
+                <li key={`${item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 flex-1 text-ink">{item.name}</span>
+                  {item.quantity ? <span className="shrink-0 text-ink-soft">x{item.quantity}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-ink-soft">Item details were not included in the tracking response.</p>
+          )}
         </div>
       </div>
     </section>

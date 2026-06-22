@@ -1,5 +1,6 @@
 "use client";
 
+import { Bot, Sparkles, Truck } from "lucide-react";
 import PayLinkCard from "@/components/PayLinkCard";
 import ProductCard from "@/components/ProductCard";
 import TrackingCard from "@/components/TrackingCard";
@@ -20,9 +21,11 @@ function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown>
     track_order: `Tracking #${args.order_number || "order"}`,
   };
 
+  const icon = tool === "track_order" ? <Truck size={13} /> : <Sparkles size={13} />;
+
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-ink-soft">
-      <span className="h-1.5 w-1.5 rounded-full bg-xiaomi animate-pulse" />
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[rgba(244,223,208,0.65)] px-3 py-1.5 text-xs font-medium text-accent">
+      {icon}
       {labels[tool] || tool}
     </span>
   );
@@ -133,10 +136,7 @@ function isProductReferenced(product: ProductSummary, content: string) {
   const productId = normalizedText(product.product_id || "");
   const name = normalizedText(product.name || "");
 
-  return Boolean(
-    (productId && normalizedContent.includes(productId)) ||
-      (name && normalizedContent.includes(name))
-  );
+  return Boolean((productId && normalizedContent.includes(productId)) || (name && normalizedContent.includes(name)));
 }
 
 export default function ChatMessage({
@@ -166,41 +166,44 @@ export default function ChatMessage({
 
   return (
     <div className={`animate-fade-in flex ${isUser ? "justify-end" : "justify-start"} ${hasProducts ? "w-full" : ""}`}>
-      <div
-        className={`${hasProducts ? "w-full max-w-none" : "max-w-[92%]"} rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-[0_10px_30px_rgba(37,36,31,0.04)] ${
-          isUser
-            ? "rounded-br-md bg-accent text-white"
-            : "rounded-bl-md border border-border bg-surface text-ink"
-        }`}
-      >
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <ToolBadge
-              tool={message.toolCalls[message.toolCalls.length - 1].tool}
-              args={message.toolCalls[message.toolCalls.length - 1].args}
-            />
-            {message.toolCalls.length > 1 && (
-              <span className="text-xs text-ink-soft">{message.toolCalls.length} steps</span>
-            )}
-          </div>
-        )}
-
-        {message.content ? <MessageBody content={message.content} hasProducts={hasProducts} /> : null}
-
-        {hasProducts && (
-          <ToolProducts products={productResults} sessionId={sessionId} onAdded={onAdded} />
-        )}
-
-        {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
-        {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
-
-        {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
-          <div className="flex items-center gap-1.5 py-1">
-            <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-white" : "bg-muted"}`} />
-            <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-white" : "bg-muted"}`} />
-            <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-white" : "bg-muted"}`} />
+      <div className={`${hasProducts ? "w-full max-w-none" : "max-w-[96%]"} flex gap-3`}>
+        {!isUser ? (
+          <div className="hidden pt-1 sm:block">
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(180deg,#fff3ea,#f2dccb)] text-accent">
+              <Bot size={16} />
+            </div>
           </div>
         ) : null}
+
+        <div
+          className={`${
+            hasProducts ? "w-full max-w-none" : "max-w-[92%]"
+          } rounded-[1.6rem] px-4 py-3 text-sm leading-relaxed shadow-[0_10px_30px_rgba(37,36,31,0.04)] ${
+            isUser
+              ? "rounded-br-md bg-[linear-gradient(180deg,#f3dfcf,#efcfb5)] text-ink"
+              : "rounded-bl-md border border-border bg-white text-ink"
+          }`}
+        >
+          {message.toolCalls && message.toolCalls.length > 0 ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <ToolBadge tool={message.toolCalls[message.toolCalls.length - 1].tool} args={message.toolCalls[message.toolCalls.length - 1].args} />
+              {message.toolCalls.length > 1 ? <span className="text-xs text-ink-soft">{message.toolCalls.length} steps</span> : null}
+            </div>
+          ) : null}
+
+          {message.content ? <MessageBody content={message.content} hasProducts={hasProducts} /> : null}
+          {hasProducts ? <ToolProducts products={productResults} sessionId={sessionId} onAdded={onAdded} /> : null}
+          {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
+          {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
+
+          {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
+            <div className="flex items-center gap-1.5 py-1">
+              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
+              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
+              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

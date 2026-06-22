@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const BROWSER_BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = typeof window === "undefined" ? BROWSER_BACKEND_URL : "";
 
 export interface CartItem {
   product_id: string;
@@ -198,8 +199,15 @@ export async function updateBudget(sessionId: string, budget_max: number | null)
 }
 
 export function createWsUrl(sessionId: string) {
-  if (typeof window === "undefined") return "ws://localhost:3000/ws";
-  return `${window.location.origin.replace(/^http/, "ws")}/ws/cart/${sessionId}`;
+  const base =
+    BROWSER_BACKEND_URL ||
+    (typeof window === "undefined" ? "http://127.0.0.1:8000" : window.location.origin);
+  const url = new URL(base);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `/ws/cart/${sessionId}`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export async function getBackendMeta(): Promise<BackendMeta> {
