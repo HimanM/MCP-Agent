@@ -578,7 +578,7 @@ function TrackOrderPanel({
             value={orderNumber}
             onChange={(event) => setOrderNumber(event.target.value)}
             placeholder={copy.orderPlaceholder}
-            className="h-14 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent md:h-12"
+            className="h-16 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent md:h-12"
           />
           <button
             type="submit"
