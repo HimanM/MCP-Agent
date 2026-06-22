@@ -25,6 +25,8 @@ interface StatusModalProps {
   voiceInputSupported: boolean;
   voiceRepliesEnabled: boolean;
   isListening: boolean;
+  backupModelEnabled: boolean;
+  onToggleBackupModel: () => void;
 }
 
 function StatusRow({
@@ -57,8 +59,17 @@ export default function StatusModal({
   voiceInputSupported,
   voiceRepliesEnabled,
   isListening,
+  backupModelEnabled,
+  onToggleBackupModel,
 }: StatusModalProps) {
   if (!open) return null;
+
+  const effectiveModel = backupModelEnabled
+    ? backendMeta?.openrouter.backup_model || "Unavailable"
+    : backendMeta?.model || "Unavailable";
+  const backupModel = backendMeta?.openrouter.backup_model || "";
+  const defaultModel = backendMeta?.openrouter.default_model || "Unavailable";
+  const backupAvailable = Boolean(backupModel);
 
   return (
     <>
@@ -91,7 +102,31 @@ export default function StatusModal({
 
         <div className="space-y-3">
           <StatusRow icon={<Bot size={16} />} label="Provider" value={backendMeta?.provider || "Unavailable"} />
-          <StatusRow icon={<Cpu size={16} />} label="Model" value={backendMeta?.model || "Unavailable"} />
+          <StatusRow icon={<Cpu size={16} />} label="Model" value={effectiveModel} />
+          <div className="rounded-2xl border border-border bg-surface px-4 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-ink">OpenRouter backup</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  {backupModelEnabled
+                    ? backupModel || "Unavailable"
+                    : defaultModel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onToggleBackupModel}
+                disabled={!backupAvailable}
+                className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                  backupModelEnabled
+                    ? "bg-accent text-white"
+                    : "border border-border bg-white text-ink-soft"
+                } ${backupAvailable ? "" : "cursor-not-allowed opacity-50"}`}
+              >
+                {backupModelEnabled ? "Backup on" : "Backup off"}
+              </button>
+            </div>
+          </div>
           <StatusRow
             icon={<ServerCog size={16} />}
             label="MCP connection"

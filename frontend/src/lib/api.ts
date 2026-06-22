@@ -25,6 +25,13 @@ export interface BackendMeta {
   provider: string;
   model: string;
   high_density_default: boolean;
+  openrouter: {
+    default_model: string;
+    backup_model: string;
+  };
+  tts: {
+    azure_configured: boolean;
+  };
   mcp: {
     server_url: string;
     connected: boolean;
@@ -114,12 +121,13 @@ export interface ChatEvent {
 export async function* streamChat(
   message: string,
   sessionId: string,
-  history?: { role: string; content: string }[]
+  history?: { role: string; content: string }[],
+  modelOverride?: string | null
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, session_id: sessionId, history }),
+    body: JSON.stringify({ message, session_id: sessionId, history, model_override: modelOverride || null }),
   });
 
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
@@ -214,5 +222,22 @@ export function createWsUrl(sessionId: string) {
 
 export async function getBackendMeta(): Promise<BackendMeta> {
   const res = await fetch(`${API_URL}/api/meta`);
+  return res.json();
+}
+
+export async function fetchTtsAudio(text: string, language: string) {
+  const res = await fetch(`${API_URL}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language }),
+  });
+
+  if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+  return res.blob();
+}
+
+export async function fetchTracking(orderNumber: string): Promise<TrackingSummary> {
+  const res = await fetch(`${API_URL}/api/track-order/${encodeURIComponent(orderNumber)}`);
+  if (!res.ok) throw new Error(`Tracking failed: ${res.status}`);
   return res.json();
 }

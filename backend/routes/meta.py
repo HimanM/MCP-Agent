@@ -23,6 +23,13 @@ async def meta():
         "provider": provider_config.provider,
         "model": provider_config.model,
         "high_density_default": provider_config.is_high_density,
+        "openrouter": {
+            "default_model": settings.openrouter_fast_model,
+            "backup_model": settings.openrouter_backup_model,
+        },
+        "tts": {
+            "azure_configured": settings.azure_speech_enabled,
+        },
         "mcp": {
             "server_url": settings.mcp_server_url,
             "connected": connected,

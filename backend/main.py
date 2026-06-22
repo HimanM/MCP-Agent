@@ -13,6 +13,7 @@ from routes.chat import router as chat_router
 from routes.image_proxy import router as image_router
 from routes.mcp_debug import router as mcp_debug_router
 from routes.meta import router as meta_router
+from routes.tts import router as tts_router
 from routes.ws import router as ws_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -38,6 +39,7 @@ app = FastAPI(title='Kapruka Shopping Agent', version='1.1.0', lifespan=lifespan
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -48,6 +50,7 @@ app.include_router(cart_router)
 app.include_router(ws_router)
 app.include_router(image_router)
 app.include_router(meta_router)
+app.include_router(tts_router)
 app.include_router(mcp_debug_router)
 
 

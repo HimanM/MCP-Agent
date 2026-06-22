@@ -25,6 +25,21 @@ This project is an MCP-powered shopping assistant for Kapruka that lets users:
 - Session/cart storage: Redis-backed cart and context storage
 - MCP integration: Kapruka MCP tools
 
+## Why Gemma 4 31B
+
+I chose `google/gemma-4-31b-it` because it was the best quality-to-cost fit for this challenge use case.
+
+- It is a highly capable open-weight multimodal model from Google DeepMind.
+- It can be deployed through Ollama, but for this project we use OpenRouter because the app is being deployed on Vercel.
+- In our testing it handled English, Singlish, Tanglish, native Sinhala, and Tamil more reliably than several pricier very large scale models.
+- It gave us strong conversational quality without pushing the hosting and usage costs up unnecessarily, which matters for a shopping assistant that may handle many short interactions.
+
+## Voice architecture
+
+- Primary TTS path: backend Azure Speech API for `en`, `si`, and `ta`
+- Fallback TTS path: browser-native `speechSynthesis`
+- Reason for this split: browser voices are too inconsistent across devices to be trusted as the main Sinhala/Tamil voice path, while Azure gives us a real API-backed multilingual route that still stays practical for deployment
+
 ## Project structure
 
 ```text

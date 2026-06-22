@@ -64,12 +64,16 @@ function clearCachedMessages(sessionId: string) {
   }
 }
 
-export function useChat(sessionId: string) {
-  const [messages, setMessages] = useState<Message[]>(() => loadCachedMessages(sessionId));
+export function useChat(sessionId: string, modelOverride?: string | null) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const idCounter = useRef(0);
   const messagesRef = useRef<Message[]>(messages);
+
+  useEffect(() => {
+    setMessages(loadCachedMessages(sessionId));
+  }, [sessionId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -104,7 +108,7 @@ export function useChat(sessionId: string) {
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
-        for await (const event of streamChat(text, sessionId, history)) {
+        for await (const event of streamChat(text, sessionId, history, modelOverride)) {
           switch (event.type) {
             case "tool_call":
               toolCalls.push({ tool: event.tool!, args: event.args || {} });
@@ -193,7 +197,7 @@ export function useChat(sessionId: string) {
         setIsStreaming(false);
       }
     },
-    [sessionId, isStreaming]
+    [sessionId, isStreaming, modelOverride]
   );
 
   const clearMessages = useCallback(() => {

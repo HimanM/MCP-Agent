@@ -28,6 +28,8 @@ import TrackingCard from "@/components/TrackingCard";
 import { useCart } from "@/hooks/useCart";
 import { type Message, useChat } from "@/hooks/useChat";
 import {
+  addToCart,
+  fetchTracking,
   getBackendMeta,
   type BackendMeta,
   streamChat,
@@ -38,11 +40,12 @@ import {
   updateCheckoutInfo,
 } from "@/lib/api";
 import { parseChatCommand } from "@/lib/chat-command";
+import { loadRecentCartSnapshots, type RecentCartSnapshot } from "@/lib/recent-carts";
 import {
   createRecognition,
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
-  speakText,
+  playAssistantSpeech,
   stopSpeaking,
   type RecognitionLike,
 } from "@/lib/speech";
@@ -80,6 +83,11 @@ type PageCopy = {
   checkoutSavedTitle: string;
   checkoutSavedBody: string;
   cartSummary: (count: number) => string;
+  reorderTitle: string;
+  reorderDescription: string;
+  reorderButton: string;
+  reorderEmpty: string;
+  reorderLastSaved: string;
 };
 
 function generateSessionId() {
@@ -89,6 +97,7 @@ function generateSessionId() {
 const SESSION_STORAGE_KEY = "kapruka.chat.session";
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const VOICE_REPLY_STORAGE_KEY = "kapruka.chat.voiceReplies";
+const MODEL_OVERRIDE_STORAGE_KEY = "kapruka.chat.modelOverride";
 
 const PAGE_COPY: Record<UiLanguage, PageCopy> = {
   en: {
@@ -120,6 +129,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout details saved",
     checkoutSavedBody: "Your cart is ready for order review and payment.",
     cartSummary: (count) => `${count} ${count === 1 ? "item" : "items"} in your cart`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
   si: {
     home: "මුල් පිටුව",
@@ -150,6 +164,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout විස්තර සුරකින ලදි",
     checkoutSavedBody: "ඔබගේ cart එක order review සහ payment සඳහා සූදානම්.",
     cartSummary: (count) => `cart එකේ ${count} ${count === 1 ? "item" : "items"}`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
   ta: {
     home: "முகப்பு",
@@ -180,6 +199,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout விவரங்கள் சேமிக்கப்பட்டது",
     checkoutSavedBody: "உங்கள் cart order review மற்றும் payment க்குத் தயாராக உள்ளது.",
     cartSummary: (count) => `உங்கள் cart-ல் ${count} ${count === 1 ? "item" : "items"}`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
 };
 
@@ -220,6 +244,15 @@ function loadVoiceRepliesEnabled() {
     return window.localStorage.getItem(VOICE_REPLY_STORAGE_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+function loadModelOverride() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(MODEL_OVERRIDE_STORAGE_KEY);
+  } catch {
+    return null;
   }
 }
 
@@ -510,6 +543,14 @@ function findLatestTracking(messages: Message[]) {
   return null;
 }
 
+function formatRecentSavedAt(savedAt: number) {
+  const diffMinutes = Math.max(1, Math.round((Date.now() - savedAt) / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.round(diffHours / 24)}d ago`;
+}
+
 function extractCategoriesFromText(raw: string): CategoryOption[] {
   const markdownLinks = [...raw.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g)]
     .map((match) => ({ label: match[1].trim(), href: match[2] }))
@@ -624,7 +665,8 @@ function WorkflowPanel({
 
 export default function HomePage() {
   const [sessionId] = useState(loadSessionId);
-  const { messages, isStreaming, error, sendMessage, clearMessages } = useChat(sessionId);
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const { messages, isStreaming, error, sendMessage, clearMessages } = useChat(sessionId, modelOverride);
   const { cart, total, updateQuantity, removeItem, refresh } = useCart(sessionId);
   const [backendMeta, setBackendMeta] = useState<BackendMeta | null>(null);
   const [input, setInput] = useState("");
@@ -647,13 +689,17 @@ export default function HomePage() {
   const [offersLoading, setOffersLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [offersError, setOffersError] = useState<string | null>(null);
-  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() =>
-    detectUiLanguage(typeof navigator === "undefined" ? "" : navigator.language)
-  );
-  const [voiceInputSupported] = useState(isSpeechRecognitionSupported);
-  const [voiceRepliesSupported] = useState(isSpeechSynthesisSupported);
-  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(loadVoiceRepliesEnabled);
+  const [trackingLookup, setTrackingLookup] = useState<TrackingSummary | null>(null);
+  const [trackingLookupBusy, setTrackingLookupBusy] = useState(false);
+  const [trackingLookupError, setTrackingLookupError] = useState<string | null>(null);
+  const [browserReady, setBrowserReady] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>("en");
+  const [voiceInputSupported, setVoiceInputSupported] = useState(false);
+  const [voiceRepliesSupported, setVoiceRepliesSupported] = useState(false);
+  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [recentCarts, setRecentCarts] = useState<RecentCartSnapshot[]>([]);
+  const [reorderBusyId, setReorderBusyId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<RecognitionLike | null>(null);
   const lastSpokenAssistantRef = useRef("");
@@ -699,6 +745,21 @@ export default function HomePage() {
   }, [sessionId]);
 
   useEffect(() => {
+    setUiLanguage(detectUiLanguage(typeof navigator === "undefined" ? "" : navigator.language));
+    setVoiceInputSupported(isSpeechRecognitionSupported());
+    setVoiceRepliesSupported(isSpeechSynthesisSupported());
+    setVoiceRepliesEnabled(loadVoiceRepliesEnabled());
+    setModelOverride(loadModelOverride());
+    setRecentCarts(loadRecentCartSnapshots());
+    setBrowserReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!browserReady) return;
+    setRecentCarts(loadRecentCartSnapshots());
+  }, [browserReady, cart]);
+
+  useEffect(() => {
     return () => {
       recognitionRef.current?.abort();
       stopSpeaking();
@@ -706,13 +767,27 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!browserReady) return;
     try {
       window.localStorage.setItem(VOICE_REPLY_STORAGE_KEY, voiceRepliesEnabled ? "1" : "0");
     } catch {
       // ignore
     }
     if (!voiceRepliesEnabled) stopSpeaking();
-  }, [voiceRepliesEnabled]);
+  }, [browserReady, voiceRepliesEnabled]);
+
+  useEffect(() => {
+    if (!browserReady) return;
+    try {
+      if (modelOverride) {
+        window.localStorage.setItem(MODEL_OVERRIDE_STORAGE_KEY, modelOverride);
+      } else {
+        window.localStorage.removeItem(MODEL_OVERRIDE_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [browserReady, modelOverride]);
 
   useEffect(() => {
     if (!messages.length) return;
@@ -720,6 +795,7 @@ export default function HomePage() {
   }, [messages]);
 
   useEffect(() => {
+    if (!browserReady || !voiceRepliesSupported) return;
     if (!voiceRepliesEnabled || isStreaming) return;
     const latestAssistant = [...messages].reverse().find(
       (message) => message.role === "assistant" && message.content.trim()
@@ -728,8 +804,8 @@ export default function HomePage() {
     const signature = `${latestAssistant.id}:${latestAssistant.content}`;
     if (signature === lastSpokenAssistantRef.current) return;
     lastSpokenAssistantRef.current = signature;
-    speakText(latestAssistant.content);
-  }, [messages, isStreaming, voiceRepliesEnabled]);
+    void playAssistantSpeech(latestAssistant.content, uiLanguage, Boolean(backendMeta?.tts.azure_configured));
+  }, [backendMeta, browserReady, isStreaming, messages, uiLanguage, voiceRepliesEnabled, voiceRepliesSupported]);
 
   useEffect(() => {
     let active = true;
@@ -779,6 +855,23 @@ export default function HomePage() {
     }
   };
 
+  const handleReorder = useCallback(
+    async (snapshot: RecentCartSnapshot) => {
+      setReorderBusyId(snapshot.sessionId);
+      try {
+        for (const item of snapshot.items) {
+          await addToCart(sessionId, item.product_id, 1);
+        }
+        await refresh();
+        setActiveView("chat");
+        setRightPanel("cart");
+      } finally {
+        setReorderBusyId(null);
+      }
+    },
+    [refresh, sessionId]
+  );
+
   const handleBudgetClear = async () => {
     setBudgetSaving(true);
     try {
@@ -798,12 +891,18 @@ export default function HomePage() {
     setRightPanel(panel);
   };
 
+  const toggleBackupModel = useCallback(() => {
+    const backupModel = backendMeta?.openrouter.backup_model;
+    if (!backupModel) return;
+    setModelOverride((current) => (current ? null : backupModel));
+  }, [backendMeta]);
+
   const loadCategories = useCallback(async () => {
     setCategoryLoading(true);
     setCategoryError(null);
     try {
       let nextCategories: CategoryOption[] = [];
-      for await (const event of streamChat(categoryPrompt, sessionId)) {
+      for await (const event of streamChat(categoryPrompt, sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.tool === "list_categories" && event.result) {
           nextCategories = extractCategoriesFromText(event.result);
         }
@@ -817,7 +916,7 @@ export default function HomePage() {
     } finally {
       setCategoryLoading(false);
     }
-  }, [categoryPrompt, sessionId]);
+  }, [categoryPrompt, modelOverride, sessionId]);
 
   const loadCategoryProducts = useCallback(async (category: string) => {
     setSelectedCategory(category);
@@ -825,7 +924,7 @@ export default function HomePage() {
     setCategoryError(null);
     setCategoryProducts([]);
     try {
-      for await (const event of streamChat(`Show popular ${category} products on Kapruka with prices`, sessionId)) {
+      for await (const event of streamChat(`Show popular ${category} products on Kapruka with prices`, sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.products?.length) {
           setCategoryProducts(event.products);
         }
@@ -835,14 +934,14 @@ export default function HomePage() {
     } finally {
       setCategoryProductsLoading(false);
     }
-  }, [sessionId]);
+  }, [modelOverride, sessionId]);
 
   const loadOffers = useCallback(async () => {
     setOffersLoading(true);
     setOffersError(null);
     try {
       let products: ProductSummary[] = [];
-      for await (const event of streamChat("Show current Kapruka deals and offers with products and prices", sessionId)) {
+      for await (const event of streamChat("Show current Kapruka deals and offers with products and prices", sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.products?.length) {
           products = event.products;
         }
@@ -853,7 +952,7 @@ export default function HomePage() {
     } finally {
       setOffersLoading(false);
     }
-  }, [sessionId]);
+  }, [modelOverride, sessionId]);
 
   const activateView = useCallback(
     (nextView: ActiveView) => {
@@ -874,12 +973,25 @@ export default function HomePage() {
     stopSpeaking();
     setSelectedCategory(null);
     setCategoryProducts([]);
+    setTrackingLookup(null);
+    setTrackingLookupError(null);
     setShowNav(false);
     setActiveView("home");
   };
 
-  const handleTrackSubmit = (orderNumber: string) => {
-    dispatchPrompt(`Track Kapruka order ${orderNumber}`, "track");
+  const handleTrackSubmit = async (orderNumber: string) => {
+    setTrackingLookupBusy(true);
+    setTrackingLookupError(null);
+    setTrackingLookup(null);
+    setActiveView("track");
+    try {
+      const next = await fetchTracking(orderNumber);
+      setTrackingLookup(next);
+    } catch {
+      setTrackingLookupError("Unable to load tracking right now. Please recheck the order number and try again.");
+    } finally {
+      setTrackingLookupBusy(false);
+    }
   };
 
   const toggleListening = () => {
@@ -936,7 +1048,28 @@ export default function HomePage() {
     { icon: <Tag size={18} />, label: pageCopy.offers, action: () => activateView("offers") },
   ];
 
-  const suggestionActions = uiCopy.suggestions.map((suggestion) => ({
+  const suggestionPresets: Record<UiLanguage, { label: string; prompt: string }[]> = {
+    en: [
+      { label: "Restock groceries", prompt: "Help me restock weekly groceries on Kapruka" },
+      { label: "Phone charger", prompt: "Need a phone charger today, not too expensive" },
+      { label: "Office wear", prompt: "I need something decent to wear for an office function" },
+      { label: "Care flowers", prompt: "Send flowers to my aunt, she is not well" },
+    ],
+    si: [
+      { label: "Groceries නැවත ගන්න", prompt: "Kapruka එකෙන් මගේ සතිපතා groceries නැවත ගන්න උදව් කරන්න" },
+      { label: "Phone charger", prompt: "cheap phone charger ekak ada hoyanna" },
+      { label: "Office wear", prompt: "office function ekakata andinna decent dewal hoyanna" },
+      { label: "Care flowers", prompt: "mage nenda leda, eyata yawanṇa hariyana flowers hoyanna" },
+    ],
+    ta: [
+      { label: "Groceries மீண்டும் வாங்க", prompt: "Kapruka-vil en vaarantha groceries meendum vaanga udhavi sei" },
+      { label: "Phone charger", prompt: "cheap-a phone charger venum, innikku thevai" },
+      { label: "Office wear", prompt: "office function-kku decent-a wear panna edhavadu kaatu" },
+      { label: "Care flowers", prompt: "en aunt nalla illa, avangalukku anuppa suitable flowers kaatu" },
+    ],
+  };
+
+  const suggestionActions = (suggestionPresets[uiLanguage] || uiCopy.suggestions).map((suggestion) => ({
     label: suggestion.label,
     action: () => dispatchPrompt(suggestion.prompt, "chat"),
   }));
@@ -956,6 +1089,8 @@ export default function HomePage() {
         voiceInputSupported={voiceInputSupported}
         voiceRepliesEnabled={voiceRepliesEnabled}
         isListening={isListening}
+        backupModelEnabled={Boolean(modelOverride)}
+        onToggleBackupModel={toggleBackupModel}
       />
 
       {checkoutSaved ? (
@@ -1062,7 +1197,7 @@ export default function HomePage() {
                 {showHero ? (
                   <section className="mx-auto flex min-h-full max-w-6xl flex-col items-center justify-center px-1 text-center">
                     <p className="text-xs text-ink-soft md:text-sm">{uiCopy.assistantLabel}</p>
-                    <h1 className="mimo-serif mt-2 max-w-4xl text-[1.9rem] leading-[0.98] text-ink sm:mt-4 sm:text-[4rem] lg:text-[5.3rem]">
+                    <h1 className="mimo-serif mt-2 max-w-3xl text-[1.9rem] leading-[0.98] text-ink sm:mt-4 sm:text-[3.6rem] lg:text-[4.6rem]">
                       {uiCopy.heroTitle}
                     </h1>
                     <div className="hero-divider my-4 md:my-5" />
@@ -1076,11 +1211,7 @@ export default function HomePage() {
                       ))}
                     </div>
 
-                    <div className="mt-5 w-full max-w-md px-2 py-2 md:mt-8 md:max-w-none md:rounded-[1.6rem] md:border md:border-[rgba(200,105,58,0.12)] md:bg-[linear-gradient(180deg,rgba(250,239,229,0.88),rgba(255,255,255,0.92))] md:px-6 md:py-5 md:shadow-[0_12px_30px_rgba(88,54,30,0.05)]">
-                      <p className="text-base text-ink">{uiCopy.heroExample}</p>
-                    </div>
-
-                    <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-8 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
+                    <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-7 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
                       {suggestionActions.map((item) => (
                         <button
                           key={item.label}
@@ -1099,7 +1230,12 @@ export default function HomePage() {
                   </div>
                 ) : activeView === "track" ? (
                   <div className="flex min-h-full items-start justify-center py-1 md:items-center md:py-6">
-                    <TrackOrderPanel tracking={latestTracking} isLoading={isStreaming} onSubmit={handleTrackSubmit} copy={pageCopy} />
+                    <TrackOrderPanel
+                      tracking={trackingLookup || latestTracking}
+                      isLoading={trackingLookupBusy}
+                      onSubmit={handleTrackSubmit}
+                      copy={pageCopy}
+                    />
                   </div>
                 ) : activeView === "categories" ? (
                   <WorkflowPanel
@@ -1263,12 +1399,20 @@ export default function HomePage() {
                     </div>
 
                     {messages.map((msg) => (
-                      <ChatMessage key={msg.id} message={msg} sessionId={sessionId} onAdded={refresh} />
+                      <ChatMessage
+                        key={msg.id}
+                        message={msg}
+                        sessionId={sessionId}
+                        onAdded={refresh}
+                        language={uiLanguage}
+                        ttsApiEnabled={Boolean(backendMeta?.tts.azure_configured)}
+                        isStreaming={isStreaming && msg.id === messages[messages.length - 1]?.id && msg.role === "assistant"}
+                      />
                     ))}
 
                     {isStreaming && messages[messages.length - 1]?.role === "user" ? (
                       <div className="animate-fade-in flex justify-start">
-                        <div className="rounded-[1.5rem] rounded-bl-md border border-border bg-white px-4 py-3 shadow-[0_12px_28px_rgba(88,54,30,0.05)]">
+                        <div className="rounded-[1.5rem] rounded-tl-md border border-border bg-white px-4 py-3 shadow-[0_12px_28px_rgba(88,54,30,0.05)]">
                           <div className="flex items-center gap-1.5">
                             <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
                             <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
@@ -1279,6 +1423,12 @@ export default function HomePage() {
                     ) : null}
                   </div>
                 )}
+
+                {trackingLookupError ? (
+                  <div className="mt-6 flex justify-center">
+                    <span className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm text-danger">{trackingLookupError}</span>
+                  </div>
+                ) : null}
 
                 {error ? (
                   <div className="mt-6 flex justify-center">
