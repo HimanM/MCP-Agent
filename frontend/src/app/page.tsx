@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AudioLines,
@@ -225,11 +226,17 @@ function loadVoiceRepliesEnabled() {
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div
-      className={`grid place-items-center bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] text-accent shadow-[0_10px_28px_rgba(200,105,58,0.18)] ${
+      className={`grid place-items-center overflow-hidden bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] shadow-[0_10px_28px_rgba(200,105,58,0.18)] ${
         compact ? "h-9 w-9 rounded-xl" : "h-11 w-11 rounded-2xl"
       }`}
     >
-      <Sparkles size={compact ? 18 : 20} />
+      <Image
+        src="/kapruka-mark.svg"
+        alt="Kapruka AI logo"
+        width={compact ? 22 : 26}
+        height={compact ? 22 : 26}
+        priority
+      />
     </div>
   );
 }
@@ -437,7 +444,7 @@ function MobileDrawer({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex flex-col bg-[rgba(255,250,246,0.94)] px-5 py-5 backdrop-blur-xl lg:hidden">
-        <div className="flex items-center justify-between">
+        <div className="drawer-item drawer-delay-1 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BrandMark />
             <div>
@@ -454,7 +461,7 @@ function MobileDrawer({
           </button>
         </div>
 
-        <div className="mt-6 space-y-2">
+        <div className="drawer-item drawer-delay-2 mt-6 space-y-2">
           {items.map((item) => (
             <SidebarLink
               key={item.label}
@@ -477,26 +484,17 @@ function MobileDrawer({
           />
         </div>
 
-        <div className="mt-auto space-y-4">
-          <div className="flex items-center gap-2">
-            {voiceInputSupported ? (
-              <UtilityIconButton
-                icon={<Mic size={16} />}
-                label={isListening ? "Stop voice input" : "Start voice input"}
-                active={isListening}
-                disabled={isStreaming}
-                onClick={onToggleListening}
-              />
-            ) : null}
-            {voiceRepliesSupported ? (
+        <div className="drawer-item drawer-delay-3 mt-auto space-y-4">
+          {voiceRepliesSupported ? (
+            <div className="flex items-center gap-2">
               <UtilityIconButton
                 icon={<AudioLines size={16} />}
                 label={voiceRepliesEnabled ? "Disable voice replies" : "Enable voice replies"}
                 active={voiceRepliesEnabled}
                 onClick={onToggleVoiceReplies}
               />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           <LanguageSwitch value={uiLanguage} onChange={onLanguageChange} />
         </div>
       </div>
@@ -578,12 +576,12 @@ function TrackOrderPanel({
             value={orderNumber}
             onChange={(event) => setOrderNumber(event.target.value)}
             placeholder={copy.orderPlaceholder}
-            className="h-16 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent md:h-12"
+            className="min-h-[3.75rem] w-full appearance-none rounded-2xl border border-border bg-white px-5 py-4 text-base leading-none text-ink outline-none shadow-[0_8px_24px_rgba(88,54,30,0.04)] focus:border-accent md:h-12 md:min-h-0 md:bg-bg md:px-4 md:py-0 md:text-sm md:shadow-none"
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="h-12 rounded-2xl bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="h-14 rounded-2xl bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50 md:h-12"
           >
             {isLoading ? "Checking..." : copy.trackButton}
           </button>
@@ -659,6 +657,7 @@ export default function HomePage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<RecognitionLike | null>(null);
   const lastSpokenAssistantRef = useRef("");
+  const voiceDraftRef = useRef("");
 
   const uiCopy = getUiCopy(uiLanguage);
   const pageCopy = PAGE_COPY[uiLanguage];
@@ -890,9 +889,15 @@ export default function HomePage() {
       return;
     }
 
-    const recognition = createRecognition("en-US");
+    const languageMap: Record<UiLanguage, string> = {
+      en: "en-US",
+      si: "si-LK",
+      ta: "ta-LK",
+    };
+    const recognition = createRecognition(languageMap[uiLanguage] || "en-US");
     if (!recognition) return;
     recognitionRef.current = recognition;
+    voiceDraftRef.current = input.trim();
 
     recognition.onresult = (event: {
       resultIndex: number;
@@ -907,13 +912,10 @@ export default function HomePage() {
         else interim += transcript;
       }
 
-      const nextValue = (final || interim).trimStart();
+      const combinedTranscript = (final || interim).trim();
+      const nextValue = [voiceDraftRef.current, combinedTranscript].filter(Boolean).join(" ").trim();
       if (!nextValue) return;
       setInput(nextValue);
-      if (final.trim()) {
-        recognition.stop();
-        setIsListening(false);
-      }
     };
 
     recognition.onerror = () => setIsListening(false);
@@ -999,7 +1001,7 @@ export default function HomePage() {
               <p className="mt-4 text-2xl font-semibold text-ink">12,450 pts</p>
             </div>
             <div className="rounded-[1.6rem] border border-border bg-white/70 px-4 py-3">
-              <p className="text-sm font-semibold text-ink">{cart.recipient?.name || "Nadeesha"}</p>
+              <p className="text-sm font-semibold text-ink">{cart.recipient?.name || "HimanM"}</p>
               <p className="mt-1 text-sm text-ink-soft">{cart.delivery?.city || "Gold Member"}</p>
             </div>
           </div>
@@ -1034,15 +1036,6 @@ export default function HomePage() {
 
             <div className="ml-auto hidden items-center gap-2 lg:flex">
               <LanguageSwitch value={uiLanguage} onChange={setUiLanguage} />
-              {voiceInputSupported ? (
-                <UtilityIconButton
-                  icon={<Mic size={18} />}
-                  label={isListening ? "Stop voice input" : "Start voice input"}
-                  active={isListening}
-                  disabled={isStreaming}
-                  onClick={toggleListening}
-                />
-              ) : null}
               {voiceRepliesSupported ? (
                 <UtilityIconButton
                   icon={<AudioLines size={18} />}
@@ -1304,7 +1297,7 @@ export default function HomePage() {
                         event.preventDefault();
                         submitCurrentMessage();
                       }}
-                      className="flex items-center gap-2 rounded-[1.35rem] border border-border bg-white px-3 py-2.5 md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3 md:shadow-[0_14px_34px_rgba(88,54,30,0.06)]"
+                      className="flex items-center gap-1.5 rounded-[1.2rem] border border-border bg-white px-2.5 py-2 md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3 md:shadow-[0_14px_34px_rgba(88,54,30,0.06)]"
                     >
                       <button
                         type="button"
@@ -1325,12 +1318,28 @@ export default function HomePage() {
                         }}
                         placeholder={uiCopy.inputPlaceholder}
                         disabled={isStreaming}
-                        className="h-11 min-w-0 flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-muted disabled:opacity-40 md:h-12"
+                        className="h-10 min-w-0 flex-1 bg-transparent px-1 text-[15px] text-ink outline-none placeholder:text-muted disabled:opacity-40 md:h-12 md:text-sm"
                       />
+                      {voiceInputSupported ? (
+                        <button
+                          type="button"
+                          onClick={toggleListening}
+                          disabled={isStreaming}
+                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border md:h-12 md:w-12 md:rounded-2xl ${
+                            isListening
+                              ? "border-accent bg-accent text-white"
+                              : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
+                          } disabled:cursor-not-allowed disabled:opacity-40`}
+                          aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                          title={isListening ? "Stop voice input" : "Start voice input"}
+                        >
+                          <Mic size={18} />
+                        </button>
+                      ) : null}
                       <button
                         type="submit"
                         disabled={isStreaming}
-                        className="grid h-11 w-11 shrink-0 place-items-center rounded-[1rem] bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-12 md:w-12 md:rounded-2xl"
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-[1rem] bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-12 md:w-12 md:rounded-2xl"
                         aria-label="Send message"
                       >
                         <SendHorizontal size={18} />
@@ -1354,12 +1363,16 @@ export default function HomePage() {
       ) : null}
 
       <aside
-        className={`fixed inset-y-3 right-3 z-50 flex w-[min(92vw,25rem)] flex-col rounded-[2rem] py-2 transition-transform duration-300 ${
-          rightPanel ? "translate-x-0" : "translate-x-[110%]"
+        className={`fixed inset-0 z-50 flex flex-col transition-opacity duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] lg:inset-y-3 lg:right-3 lg:left-auto lg:w-[min(92vw,25rem)] lg:py-2 ${
+          rightPanel ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
-        <div className="glass-panel flex h-full min-h-0 flex-col rounded-[2rem] px-4 py-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <div
+          className={`glass-panel flex h-full min-h-0 flex-col rounded-none px-5 py-5 transition-transform duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] lg:rounded-[2rem] lg:px-4 ${
+            rightPanel ? "translate-y-0 lg:translate-x-0" : "translate-y-6 lg:translate-x-[110%]"
+          }`}
+        >
+          <div className="drawer-item drawer-delay-1 mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-ink">
                 {rightPanel === "checkout" ? "Checkout overview" : uiCopy.cart}
@@ -1374,12 +1387,13 @@ export default function HomePage() {
               type="button"
               onClick={() => setRightPanel(null)}
               className="grid h-10 w-10 place-items-center rounded-full border border-border bg-white text-ink-soft"
+              aria-label="Close cart panel"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-[1.4rem] border border-border bg-white/80 p-1">
+          <div className="drawer-item drawer-delay-2 mb-4 grid grid-cols-2 gap-2 rounded-[1.4rem] border border-border bg-white/80 p-1">
             <button
               type="button"
               onClick={() => setRightPanel("cart")}
@@ -1401,7 +1415,7 @@ export default function HomePage() {
           </div>
 
           {rightPanel === "checkout" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+            <div className="drawer-item drawer-delay-3 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
               <CheckoutSummaryCard
                 recipientName={cart.recipient?.name}
                 deliveryCity={cart.delivery?.city}
@@ -1421,7 +1435,7 @@ export default function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[1.6rem] border border-border bg-white/70">
+            <div className="drawer-item drawer-delay-3 min-h-0 flex-1 overflow-hidden rounded-[1.6rem] border border-border bg-white/70">
               <Cart
                 cart={cart}
                 total={total}

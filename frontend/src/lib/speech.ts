@@ -6,6 +6,7 @@ export interface RecognitionLike {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  maxAlternatives?: number;
   start: () => void;
   stop: () => void;
   abort: () => void;
@@ -25,8 +26,9 @@ export function createRecognition(lang = "en-US"): RecognitionLike | null {
   if (!Ctor) return null;
   const recognition: RecognitionLike = new Ctor();
   recognition.lang = lang;
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
   return recognition;
 }
 
