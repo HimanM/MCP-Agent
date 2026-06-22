@@ -48,7 +48,7 @@ function ToolProducts({
         <p className="text-sm font-medium text-ink">Products found</p>
         <span className="text-xs text-muted">Tap a card to open the product page</span>
       </div>
-      <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 items-stretch gap-2.5 md:grid-cols-3 xl:grid-cols-4">
         {products.map((product) => (
           <ProductCard
             key={product.product_id || product.product_url || product.name}
