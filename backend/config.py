@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     groq_fast_model: str = "llama-3.1-8b-instant"
     groq_reasoning_model: str = "llama-3.3-70b-versatile"
+    groq_stt_model: str = "whisper-large-v3-turbo"
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -28,12 +29,15 @@ class Settings(BaseSettings):
     openrouter_model: str = ""
     openrouter_fast_model: str = "google/gemma-4-31b-it:free"
     openrouter_backup_model: str = ""
+    openrouter_stt_model: str = "openai/gpt-4o-mini-transcribe"
     # ponytail: use one cheap default unless a deployer explicitly opts into a pricier OpenRouter reasoning model.
     openrouter_reasoning_model: str = "google/gemma-4-31b-it:free"
     openrouter_site_url: str = "http://localhost:3000"
     openrouter_app_name: str = "Kapruka Shopper"
-    azure_speech_key: str = ""
-    azure_speech_region: str = ""
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = ""
+    elevenlabs_tamil_voice_id: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
 
     mcp_server_url: str = "https://mcp.kapruka.com/mcp"
     redis_url: str = "redis://localhost:6379/0"
@@ -51,8 +55,16 @@ class Settings(BaseSettings):
         return r"^https://[a-zA-Z0-9-]+(?:-[a-zA-Z0-9-]+)*\.vercel\.app$|^http://localhost:\d+$|^http://127\.0\.0\.1:\d+$"
 
     @property
-    def azure_speech_enabled(self) -> bool:
-        return bool(self.azure_speech_key and self.azure_speech_region)
+    def elevenlabs_enabled(self) -> bool:
+        return bool(self.elevenlabs_api_key and self.elevenlabs_voice_id)
+
+    @property
+    def openrouter_stt_enabled(self) -> bool:
+        return bool(self.openrouter_api_key and self.openrouter_stt_model)
+
+    @property
+    def groq_stt_enabled(self) -> bool:
+        return bool(self.groq_api_key and self.groq_stt_model)
 
 
 settings = Settings()

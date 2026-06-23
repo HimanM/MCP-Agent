@@ -33,6 +33,7 @@ import {
   getBackendMeta,
   type BackendMeta,
   streamChat,
+  transcribeAudio,
   type CheckoutInfoPayload,
   type ProductSummary,
   type TrackingSummary,
@@ -42,14 +43,12 @@ import {
 import { parseChatCommand } from "@/lib/chat-command";
 import { loadRecentCartSnapshots, type RecentCartSnapshot } from "@/lib/recent-carts";
 import {
-  createRecognition,
-  isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
   playAssistantSpeech,
+  subscribeSpeechState,
   stopSpeaking,
-  type RecognitionLike,
 } from "@/lib/speech";
-import { detectUiLanguage, getUiCopy, type UiLanguage } from "@/lib/ui-copy";
+import { getUiCopy, type UiLanguage } from "@/lib/ui-copy";
 
 type ActiveView = "home" | "chat" | "gift" | "track" | "categories" | "offers";
 type RightPanel = "cart" | "checkout" | null;
@@ -96,7 +95,6 @@ function generateSessionId() {
 
 const SESSION_STORAGE_KEY = "kapruka.chat.session";
 const SESSION_TTL_MS = 5 * 60 * 1000;
-const VOICE_REPLY_STORAGE_KEY = "kapruka.chat.voiceReplies";
 const MODEL_OVERRIDE_STORAGE_KEY = "kapruka.chat.modelOverride";
 
 const PAGE_COPY: Record<UiLanguage, PageCopy> = {
@@ -235,15 +233,6 @@ function saveSessionId(sessionId: string) {
     );
   } catch {
     // ignore
-  }
-}
-
-function loadVoiceRepliesEnabled() {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(VOICE_REPLY_STORAGE_KEY) === "1";
-  } catch {
-    return false;
   }
 }
 
@@ -522,13 +511,13 @@ function MobileDrawer({
             <div className="flex items-center gap-2">
               <UtilityIconButton
                 icon={<AudioLines size={16} />}
-                label={voiceRepliesEnabled ? "Disable voice replies" : "Enable voice replies"}
+                label={voiceRepliesEnabled ? "Stop assistant voice" : "Play latest assistant voice"}
                 active={voiceRepliesEnabled}
                 onClick={onToggleVoiceReplies}
               />
             </div>
           ) : null}
-          <LanguageSwitch value={uiLanguage} onChange={onLanguageChange} />
+          {false ? <LanguageSwitch value={uiLanguage} onChange={onLanguageChange} /> : null}
         </div>
       </div>
     </>
@@ -693,17 +682,20 @@ export default function HomePage() {
   const [trackingLookupBusy, setTrackingLookupBusy] = useState(false);
   const [trackingLookupError, setTrackingLookupError] = useState<string | null>(null);
   const [browserReady, setBrowserReady] = useState(false);
-  const [uiLanguage, setUiLanguage] = useState<UiLanguage>("en");
+  const [uiLanguage] = useState<UiLanguage>("en");
   const [voiceInputSupported, setVoiceInputSupported] = useState(false);
   const [voiceRepliesSupported, setVoiceRepliesSupported] = useState(false);
-  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [micActive, setMicActive] = useState(false);
+  const [activeSpeechKey, setActiveSpeechKey] = useState<string | null>(null);
   const [recentCarts, setRecentCarts] = useState<RecentCartSnapshot[]>([]);
   const [reorderBusyId, setReorderBusyId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<RecognitionLike | null>(null);
-  const lastSpokenAssistantRef = useRef("");
-  const voiceDraftRef = useRef("");
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const inputBeforeRecordingRef = useRef("");
+  const mimeTypeRef = useRef("webm");
 
   const uiCopy = getUiCopy(uiLanguage);
   const pageCopy = PAGE_COPY[uiLanguage];
@@ -711,6 +703,12 @@ export default function HomePage() {
   const categoryPrompt = CATEGORY_PROMPT[uiLanguage];
   const budgetValue = budgetDraft || (cart.budget_max != null ? String(cart.budget_max) : "");
   const latestTracking = useMemo(() => findLatestTracking(messages), [messages]);
+  const latestAssistantMessage = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant" && message.content.trim()) || null,
+    [messages]
+  );
+  const latestAssistantSpeechKey = latestAssistantMessage ? `${latestAssistantMessage.id}:${latestAssistantMessage.content}` : null;
+  const isAssistantSpeaking = Boolean(latestAssistantSpeechKey && activeSpeechKey === latestAssistantSpeechKey);
   const fallbackCategoryList = useMemo(() => parseCategoriesFromMessages(messages), [messages]);
   const categoryList = categoryOptions.length ? categoryOptions : fallbackCategoryList;
 
@@ -745,10 +743,13 @@ export default function HomePage() {
   }, [sessionId]);
 
   useEffect(() => {
-    setUiLanguage(detectUiLanguage(typeof navigator === "undefined" ? "" : navigator.language));
-    setVoiceInputSupported(isSpeechRecognitionSupported());
+    setVoiceInputSupported(
+      typeof window !== "undefined" &&
+        "MediaRecorder" in window &&
+        typeof navigator !== "undefined" &&
+        Boolean(navigator.mediaDevices?.getUserMedia)
+    );
     setVoiceRepliesSupported(isSpeechSynthesisSupported());
-    setVoiceRepliesEnabled(loadVoiceRepliesEnabled());
     setModelOverride(loadModelOverride());
     setRecentCarts(loadRecentCartSnapshots());
     setBrowserReady(true);
@@ -761,20 +762,13 @@ export default function HomePage() {
 
   useEffect(() => {
     return () => {
-      recognitionRef.current?.abort();
+      setMicActive(false);
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
       stopSpeaking();
     };
   }, []);
-
-  useEffect(() => {
-    if (!browserReady) return;
-    try {
-      window.localStorage.setItem(VOICE_REPLY_STORAGE_KEY, voiceRepliesEnabled ? "1" : "0");
-    } catch {
-      // ignore
-    }
-    if (!voiceRepliesEnabled) stopSpeaking();
-  }, [browserReady, voiceRepliesEnabled]);
 
   useEffect(() => {
     if (!browserReady) return;
@@ -795,17 +789,8 @@ export default function HomePage() {
   }, [messages]);
 
   useEffect(() => {
-    if (!browserReady || !voiceRepliesSupported) return;
-    if (!voiceRepliesEnabled || isStreaming) return;
-    const latestAssistant = [...messages].reverse().find(
-      (message) => message.role === "assistant" && message.content.trim()
-    );
-    if (!latestAssistant) return;
-    const signature = `${latestAssistant.id}:${latestAssistant.content}`;
-    if (signature === lastSpokenAssistantRef.current) return;
-    lastSpokenAssistantRef.current = signature;
-    void playAssistantSpeech(latestAssistant.content, uiLanguage, Boolean(backendMeta?.tts.azure_configured));
-  }, [backendMeta, browserReady, isStreaming, messages, uiLanguage, voiceRepliesEnabled, voiceRepliesSupported]);
+    return subscribeSpeechState(setActiveSpeechKey);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -890,6 +875,20 @@ export default function HomePage() {
   const openRightPanel = (panel: Exclude<RightPanel, null>) => {
     setRightPanel(panel);
   };
+
+  const toggleLatestAssistantSpeech = useCallback(() => {
+    if (!latestAssistantMessage) return;
+    if (isAssistantSpeaking) {
+      stopSpeaking();
+      return;
+    }
+    void playAssistantSpeech(
+      latestAssistantMessage.content,
+      uiLanguage,
+      Boolean(backendMeta?.tts.configured),
+      latestAssistantSpeechKey || undefined
+    );
+  }, [backendMeta, isAssistantSpeaking, latestAssistantMessage, latestAssistantSpeechKey, uiLanguage]);
 
   const toggleBackupModel = useCallback(() => {
     const backupModel = backendMeta?.openrouter.backup_model;
@@ -994,49 +993,77 @@ export default function HomePage() {
     }
   };
 
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
+  const toggleListening = async () => {
+    if (micActive) {
+      mediaRecorderRef.current?.stop();
       return;
     }
 
-    const languageMap: Record<UiLanguage, string> = {
-      en: "en-US",
-      si: "si-LK",
-      ta: "ta-LK",
-    };
-    const recognition = createRecognition(languageMap[uiLanguage] || "en-US");
-    if (!recognition) return;
-    recognitionRef.current = recognition;
-    voiceDraftRef.current = input.trim();
-
-    recognition.onresult = (event: {
-      resultIndex: number;
-      results: { [key: number]: { 0: { transcript: string }; isFinal: boolean }; length: number };
-    }) => {
-      let interim = "";
-      let final = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result[0].transcript;
-        if (result.isFinal) final += transcript;
-        else interim += transcript;
-      }
-
-      const combinedTranscript = (final || interim).trim();
-      const nextValue = [voiceDraftRef.current, combinedTranscript].filter(Boolean).join(" ").trim();
-      if (!nextValue) return;
-      setInput(nextValue);
-    };
-
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      return;
+    }
 
     try {
-      recognition.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+      inputBeforeRecordingRef.current = input.trim();
+
+      const preferredMimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = preferredMimeType ? new MediaRecorder(stream, { mimeType: preferredMimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      mimeTypeRef.current = recorder.mimeType.includes("mp4")
+        ? "mp4"
+        : recorder.mimeType.includes("ogg")
+          ? "ogg"
+          : recorder.mimeType.includes("mpeg")
+            ? "mp3"
+            : recorder.mimeType.includes("wav")
+              ? "wav"
+              : "webm";
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        setMicActive(false);
+        setIsListening(false);
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        audioChunksRef.current = [];
+        if (!audioBlob.size) return;
+
+        try {
+          const result = await transcribeAudio(audioBlob, mimeTypeRef.current);
+          const transcript = result.text.trim();
+          if (!transcript) return;
+          setInput([inputBeforeRecordingRef.current, transcript].filter(Boolean).join(" ").trim());
+        } catch (error) {
+          console.warn("audio-transcription-error", error);
+        }
+      };
+
+      recorder.onerror = () => {
+        setMicActive(false);
+        setIsListening(false);
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      };
+
+      recorder.start();
+      setMicActive(true);
       setIsListening(true);
     } catch {
+      setMicActive(false);
       setIsListening(false);
     }
   };
@@ -1087,7 +1114,7 @@ export default function HomePage() {
         uiLanguage={uiLanguage}
         cartCount={cartCount}
         voiceInputSupported={voiceInputSupported}
-        voiceRepliesEnabled={voiceRepliesEnabled}
+        voiceRepliesEnabled={isAssistantSpeaking}
         isListening={isListening}
         backupModelEnabled={Boolean(modelOverride)}
         onToggleBackupModel={toggleBackupModel}
@@ -1170,13 +1197,13 @@ export default function HomePage() {
             </div>
 
             <div className="ml-auto hidden items-center gap-2 lg:flex">
-              <LanguageSwitch value={uiLanguage} onChange={setUiLanguage} />
+              {false ? <LanguageSwitch value={uiLanguage} onChange={() => undefined} /> : null}
               {voiceRepliesSupported ? (
                 <UtilityIconButton
                   icon={<AudioLines size={18} />}
-                  label={voiceRepliesEnabled ? "Disable voice replies" : "Enable voice replies"}
-                  active={voiceRepliesEnabled}
-                  onClick={() => setVoiceRepliesEnabled((current) => !current)}
+                  label={isAssistantSpeaking ? "Stop assistant voice" : "Play latest assistant voice"}
+                  active={isAssistantSpeaking}
+                  onClick={toggleLatestAssistantSpeech}
                 />
               ) : null}
               <button
@@ -1405,7 +1432,7 @@ export default function HomePage() {
                         sessionId={sessionId}
                         onAdded={refresh}
                         language={uiLanguage}
-                        ttsApiEnabled={Boolean(backendMeta?.tts.azure_configured)}
+                        ttsApiEnabled={Boolean(backendMeta?.tts.configured)}
                         isStreaming={isStreaming && msg.id === messages[messages.length - 1]?.id && msg.role === "assistant"}
                       />
                     ))}
@@ -1470,22 +1497,20 @@ export default function HomePage() {
                         disabled={isStreaming}
                         className="h-10 min-w-0 flex-1 bg-transparent px-1 text-[15px] text-ink outline-none placeholder:text-muted disabled:opacity-40 md:h-12 md:text-sm"
                       />
-                      {voiceInputSupported ? (
-                        <button
-                          type="button"
-                          onClick={toggleListening}
-                          disabled={isStreaming}
-                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border md:h-12 md:w-12 md:rounded-2xl ${
-                            isListening
-                              ? "border-accent bg-accent text-white"
-                              : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
-                          } disabled:cursor-not-allowed disabled:opacity-40`}
-                          aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                          title={isListening ? "Stop voice input" : "Start voice input"}
-                        >
-                          <Mic size={18} />
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={toggleListening}
+                        disabled={isStreaming || !voiceInputSupported}
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border md:h-12 md:w-12 md:rounded-2xl ${
+                          micActive
+                            ? "border-accent bg-accent text-white"
+                            : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        aria-label={micActive ? "Stop voice input" : "Start voice input"}
+                        title={voiceInputSupported ? (micActive ? "Stop voice input" : "Start voice input") : "Voice input not supported in this browser"}
+                      >
+                        <Mic size={18} />
+                      </button>
                       <button
                         type="submit"
                         disabled={isStreaming}
@@ -1504,24 +1529,16 @@ export default function HomePage() {
       </div>
 
       {rightPanel ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-[rgba(37,24,18,0.18)] backdrop-blur-[2px]"
-          aria-label="Close side panel"
-          onClick={() => setRightPanel(null)}
-        />
-      ) : null}
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-[rgba(37,24,18,0.18)] backdrop-blur-[2px]"
+            aria-label="Close side panel"
+            onClick={() => setRightPanel(null)}
+          />
 
-      <aside
-        className={`fixed inset-0 z-50 flex flex-col transition-opacity duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] lg:inset-y-3 lg:right-3 lg:left-auto lg:w-[min(92vw,25rem)] lg:py-2 ${
-          rightPanel ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      >
-        <div
-          className={`glass-panel flex h-full min-h-0 flex-col rounded-none px-5 py-5 transition-transform duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] lg:rounded-[2rem] lg:px-4 ${
-            rightPanel ? "translate-y-0 lg:translate-x-0" : "translate-y-6 lg:translate-x-[110%]"
-          }`}
-        >
+          <aside className="fixed inset-0 z-50 flex flex-col transition-opacity duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] opacity-100 lg:inset-y-3 lg:right-3 lg:left-auto lg:w-[min(92vw,25rem)] lg:py-2">
+            <div className="glass-panel flex h-full min-h-0 flex-col rounded-none px-5 py-5 transition-transform duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] translate-y-0 lg:translate-x-0 lg:rounded-[2rem] lg:px-4">
           <div className="drawer-item drawer-delay-1 mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-ink">
@@ -1600,41 +1617,45 @@ export default function HomePage() {
               />
             </div>
           )}
-        </div>
-      </aside>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
-      <CheckoutDrawer
-        key={[
-          cart.recipient?.name || "",
-          cart.recipient?.phone || "",
-          cart.delivery?.address || "",
-          cart.delivery?.city || "",
-          cart.delivery?.date || "",
-          cart.sender?.name || "",
-          cart.gift_message || "",
-        ].join("|")}
-        open={showCheckout}
-        cart={cart}
-        total={total}
-        onClose={() => setShowCheckout(false)}
-        onSubmit={handleCheckoutSubmit}
-        isSaving={checkoutSaving}
-        error={checkoutError}
-      />
+      {showCheckout ? (
+        <CheckoutDrawer
+          key={[
+            cart.recipient?.name || "",
+            cart.recipient?.phone || "",
+            cart.delivery?.address || "",
+            cart.delivery?.city || "",
+            cart.delivery?.date || "",
+            cart.sender?.name || "",
+            cart.gift_message || "",
+          ].join("|")}
+          open={showCheckout}
+          cart={cart}
+          total={total}
+          onClose={() => setShowCheckout(false)}
+          onSubmit={handleCheckoutSubmit}
+          isSaving={checkoutSaving}
+          error={checkoutError}
+        />
+      ) : null}
       {showNav ? (
         <MobileDrawer
           activeView={activeView}
           onChange={activateView}
           onClose={() => setShowNav(false)}
           uiLanguage={uiLanguage}
-          onLanguageChange={setUiLanguage}
+          onLanguageChange={() => undefined}
           voiceInputSupported={voiceInputSupported}
           voiceRepliesSupported={voiceRepliesSupported}
-          voiceRepliesEnabled={voiceRepliesEnabled}
+          voiceRepliesEnabled={isAssistantSpeaking}
           isListening={isListening}
           isStreaming={isStreaming}
           onToggleListening={toggleListening}
-          onToggleVoiceReplies={() => setVoiceRepliesEnabled((current) => !current)}
+          onToggleVoiceReplies={toggleLatestAssistantSpeech}
           onNewChat={handleNewChat}
           copy={pageCopy}
           giftAdvisorLabel={uiCopy.giftAdvisor}

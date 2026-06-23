@@ -27,8 +27,8 @@ def _validate_tts_request(payload: TTSRequest) -> tuple[str, str]:
 @router.post("/tts")
 async def tts(payload: TTSRequest):
     text, language = _validate_tts_request(payload)
-    if not settings.azure_speech_enabled:
-        raise HTTPException(status_code=503, detail="Azure speech is not configured")
+    if not settings.elevenlabs_enabled:
+        raise HTTPException(status_code=503, detail="ElevenLabs is not configured")
 
     try:
         audio = await synthesize_tts(text, language)

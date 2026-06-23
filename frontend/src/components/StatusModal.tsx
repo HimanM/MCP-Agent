@@ -148,7 +148,7 @@ export default function StatusModal({
           <StatusRow
             icon={<Volume2 size={16} />}
             label="Voice replies"
-            value={voiceRepliesEnabled ? "Enabled" : "Disabled"}
+            value={voiceRepliesEnabled ? "Speaking" : "Idle"}
           />
         </div>
       </section>

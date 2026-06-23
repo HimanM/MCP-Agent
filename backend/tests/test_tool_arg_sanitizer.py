@@ -94,7 +94,7 @@ class ToolArgSanitizerTest(unittest.TestCase):
         })
 
     def test_search_tool_result_tells_model_to_validate_candidates(self):
-        content = format_tool_result_for_model("search_products", "[]", "gift for a 1 year old", {"q": "gifts"})
+        content = format_tool_result_for_model("search_products", '[{"name":"Cake","product_id":"SKU-1","price":4500,"raw":"ignore-me"}]', "gift for a 1 year old", {"q": "gifts"})
 
         self.assertIn("These are candidates, not recommendations", content)
         self.assertIn("gift for a 1 year old", content)
@@ -104,6 +104,8 @@ class ToolArgSanitizerTest(unittest.TestCase):
         self.assertIn("one clear next step", content)
         self.assertIn("closest useful substitute", content)
         self.assertIn("explain the tradeoff briefly", content)
+        self.assertIn('"name": "Cake"', content)
+        self.assertNotIn("ignore-me", content)
 
     def test_parses_bracketed_failed_generation(self):
         failed_generation = (

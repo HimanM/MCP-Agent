@@ -495,11 +495,30 @@ def format_tool_result_for_model(tool_name: str, result: Any, user_text: str, ar
     if tool_name != "search_products":
         return str(result)
 
+    concise_results = result
+    try:
+        parsed = json.loads(result) if isinstance(result, str) else result
+        if isinstance(parsed, list):
+            concise_results = json.dumps(
+                [
+                    {
+                        "name": item.get("name", ""),
+                        "product_id": item.get("product_id", ""),
+                        "price": item.get("price", 0),
+                        "product_url": item.get("product_url", ""),
+                    }
+                    for item in parsed[:10]
+                    if isinstance(item, dict)
+                ]
+            )
+    except Exception:
+        concise_results = result
+
     return (
         "<search_result_candidates>\n"
         f"user_request: {user_text}\n"
         f"search_query: {args.get('q', '')}\n"
-        f"results: {result}\n"
+        f"results: {concise_results}\n"
         "</search_result_candidates>\n\n"
         "These are candidates, not recommendations. Before answering, compare each candidate to the user's actual intent. "
         "Recommend only clear matches. If the candidates do not fit the request, call search_products again with a better query. "

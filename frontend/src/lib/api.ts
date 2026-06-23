@@ -30,7 +30,13 @@ export interface BackendMeta {
     backup_model: string;
   };
   tts: {
-    azure_configured: boolean;
+    configured: boolean;
+    provider: string;
+  };
+  stt: {
+    configured: boolean;
+    provider: string;
+    model: string;
   };
   mcp: {
     server_url: string;
@@ -232,8 +238,56 @@ export async function fetchTtsAudio(text: string, language: string) {
     body: JSON.stringify({ text, language }),
   });
 
-  if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || "";
+    } catch {
+      // ignore
+    }
+    throw new Error(detail ? `TTS failed: ${detail}` : `TTS failed: ${res.status}`);
+  }
   return res.blob();
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const base64 = result.split(",")[1] || "";
+      if (!base64) {
+        reject(new Error("Unable to encode audio"));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Unable to read audio"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function transcribeAudio(blob: Blob, format: string) {
+  const audioBase64 = await blobToBase64(blob);
+  const res = await fetch(`${API_URL}/api/stt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_base64: audioBase64, format }),
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || "";
+    } catch {
+      // ignore
+    }
+    throw new Error(detail ? `STT failed: ${detail}` : `STT failed: ${res.status}`);
+  }
+
+  return res.json() as Promise<{ text: string }>;
 }
 
 export async function fetchTracking(orderNumber: string): Promise<TrackingSummary> {

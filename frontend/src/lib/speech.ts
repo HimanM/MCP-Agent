@@ -9,13 +9,15 @@ export interface RecognitionLike {
   continuous: boolean;
   interimResults: boolean;
   maxAlternatives?: number;
-  start: () => void;
+  start: (audioTrack?: MediaStreamTrack) => void;
   stop: () => void;
   abort: () => void;
   onresult: ((event: any) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: any) => void) | null;
 }
+
+type SpeechStateListener = (speechKey: string | null) => void;
 
 export function isSpeechRecognitionSupported() {
   if (typeof window === "undefined") return false;
@@ -34,6 +36,11 @@ export function createRecognition(lang = "en-US"): RecognitionLike | null {
   return recognition;
 }
 
+export function recognitionLocaleForLanguage(_language: string) {
+  // ponytail: English recognition is the most reliable path here and works best for English, Singlish, and Tanglish.
+  return "en-US";
+}
+
 export function isSpeechSynthesisSupported() {
   return typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined";
 }
@@ -45,6 +52,20 @@ function localeForLanguage(language: string) {
 }
 
 let activeAudio: HTMLAudioElement | null = null;
+let activeSpeechKey: string | null = null;
+const speechStateListeners = new Set<SpeechStateListener>();
+
+function emitSpeechState() {
+  for (const listener of speechStateListeners) listener(activeSpeechKey);
+}
+
+export function subscribeSpeechState(listener: SpeechStateListener) {
+  speechStateListeners.add(listener);
+  listener(activeSpeechKey);
+  return () => {
+    speechStateListeners.delete(listener);
+  };
+}
 
 export function stripForSpeech(text: string) {
   return text
@@ -55,7 +76,7 @@ export function stripForSpeech(text: string) {
     .trim();
 }
 
-export function speakText(text: string, language = "en") {
+export function speakText(text: string, language = "en", speechKey?: string) {
   if (!isSpeechSynthesisSupported()) return;
   const clean = stripForSpeech(text);
   if (!clean) return;
@@ -64,10 +85,16 @@ export function speakText(text: string, language = "en") {
     activeAudio = null;
   }
   window.speechSynthesis.cancel();
+  activeSpeechKey = speechKey || clean;
+  emitSpeechState();
   const utterance = new SpeechSynthesisUtterance(clean);
   utterance.lang = localeForLanguage(language);
   utterance.rate = 1.02;
   utterance.pitch = 1;
+  utterance.onend = () => {
+    activeSpeechKey = null;
+    emitSpeechState();
+  };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -76,32 +103,42 @@ export function stopSpeaking() {
     activeAudio.pause();
     activeAudio = null;
   }
+  activeSpeechKey = null;
+  emitSpeechState();
   if (!isSpeechSynthesisSupported()) return;
   window.speechSynthesis.cancel();
 }
 
-export async function playAssistantSpeech(text: string, language = "en", preferApi = true) {
+export async function playAssistantSpeech(text: string, language = "en", preferApi = true, speechKey?: string) {
   const clean = stripForSpeech(text);
   if (!clean) return "empty";
 
   if (preferApi) {
+    stopSpeaking();
+    activeSpeechKey = speechKey || clean;
+    emitSpeechState();
+    const blob = await fetchTtsAudio(clean, language);
+    const objectUrl = URL.createObjectURL(blob);
+    const audio = new Audio(objectUrl);
+    activeAudio = audio;
+    audio.onended = () => {
+      URL.revokeObjectURL(objectUrl);
+      if (activeAudio === audio) activeAudio = null;
+      activeSpeechKey = null;
+      emitSpeechState();
+    };
     try {
-      const blob = await fetchTtsAudio(clean, language);
-      stopSpeaking();
-      const objectUrl = URL.createObjectURL(blob);
-      const audio = new Audio(objectUrl);
-      activeAudio = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(objectUrl);
-        if (activeAudio === audio) activeAudio = null;
-      };
       await audio.play();
-      return "api";
     } catch {
-      // fall through to browser speech
+      URL.revokeObjectURL(objectUrl);
+      if (activeAudio === audio) activeAudio = null;
+      activeSpeechKey = null;
+      emitSpeechState();
+      return "blocked";
     }
+    return "api";
   }
 
-  speakText(clean, language);
+  speakText(clean, language, speechKey);
   return "browser";
 }

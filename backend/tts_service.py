@@ -1,55 +1,52 @@
 from __future__ import annotations
 
-from html import escape
-
 import httpx
 
 from config import settings
 
-VOICE_MAP = {
-    "en": "en-IN-NeerjaNeural",
-    "si": "si-LK-ThiliniNeural",
-    "ta": "ta-LK-SaranyaNeural",
-}
+MAX_TTS_CHARS = 1200
 
-LOCALE_MAP = {
-    "en": "en-IN",
-    "si": "si-LK",
-    "ta": "ta-LK",
+LANGUAGE_CODE_MAP = {
+    "en": "en",
+    "ta": "ta",
 }
-
-MAX_TTS_CHARS = 320
 
 
 def normalize_tts_language(language: str) -> str:
-    return language if language in VOICE_MAP else "en"
+    return language if language in LANGUAGE_CODE_MAP else "en"
 
 
-def build_ssml(text: str, language: str) -> str:
-    normalized_language = normalize_tts_language(language)
-    voice = VOICE_MAP[normalized_language]
-    locale = LOCALE_MAP[normalized_language]
-    return (
-        f"<speak version='1.0' xml:lang='{locale}'>"
-        f"<voice name='{voice}'>{escape(text)}</voice>"
-        "</speak>"
-    )
+def voice_id_for_language(language: str) -> str:
+    normalized = normalize_tts_language(language)
+    if normalized == "ta" and settings.elevenlabs_tamil_voice_id:
+        return settings.elevenlabs_tamil_voice_id
+    return settings.elevenlabs_voice_id
+
+
+def build_tts_payload(text: str, language: str) -> dict:
+    normalized = normalize_tts_language(language)
+    return {
+        "text": text,
+        "model_id": settings.elevenlabs_model,
+        "language_code": LANGUAGE_CODE_MAP[normalized],
+    }
 
 
 async def synthesize_tts(text: str, language: str) -> bytes:
-    if not settings.azure_speech_enabled:
-        raise RuntimeError("Azure speech is not configured")
+    if not settings.elevenlabs_enabled:
+        raise RuntimeError("ElevenLabs is not configured")
 
-    endpoint = f"https://{settings.azure_speech_region}.tts.speech.microsoft.com/cognitiveservices/v1"
+    voice_id = voice_id_for_language(language)
+    endpoint = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(
             endpoint,
-            content=build_ssml(text, language),
+            params={"output_format": "mp3_44100_128"},
+            json=build_tts_payload(text, language),
             headers={
-                "Ocp-Apim-Subscription-Key": settings.azure_speech_key,
-                "Content-Type": "application/ssml+xml",
-                "X-Microsoft-OutputFormat": "audio-16khz-32kbitrate-mono-mp3",
-                "User-Agent": "Kapruka Shopper",
+                "xi-api-key": settings.elevenlabs_api_key,
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg",
             },
         )
         response.raise_for_status()
