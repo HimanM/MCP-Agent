@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { streamChat, type OrderSummary, type ProductSummary, type TrackingSummary } from "@/lib/api";
 
 export interface Message {
@@ -12,15 +12,85 @@ export interface Message {
   timestamp: number;
 }
 
-export function useChat(sessionId: string) {
+const CHAT_CACHE_PREFIX = "kapruka.chat.messages";
+const CHAT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function chatCacheKey(sessionId: string) {
+  return `${CHAT_CACHE_PREFIX}:${sessionId}`;
+}
+
+function loadCachedMessages(sessionId: string): Message[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(chatCacheKey(sessionId));
+    if (!raw) return [];
+
+    const cached = JSON.parse(raw) as { expiresAt?: number; messages?: Message[] };
+    if (!cached.expiresAt || cached.expiresAt < Date.now()) {
+      window.localStorage.removeItem(chatCacheKey(sessionId));
+      return [];
+    }
+
+    return Array.isArray(cached.messages) ? cached.messages : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedMessages(sessionId: string, messages: Message[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      chatCacheKey(sessionId),
+      JSON.stringify({
+        expiresAt: Date.now() + CHAT_CACHE_TTL_MS,
+        messages,
+      })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+function clearCachedMessages(sessionId: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(chatCacheKey(sessionId));
+  } catch {
+    // ignore
+  }
+}
+
+export function useChat(sessionId: string, modelOverride?: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const idCounter = useRef(0);
+  const messagesRef = useRef<Message[]>(messages);
+
+  useEffect(() => {
+    setMessages(loadCachedMessages(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+    idCounter.current = Math.max(idCounter.current, messages.length * 2);
+    saveCachedMessages(sessionId, messages);
+  }, [messages, sessionId]);
 
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isStreaming) return;
+
+      const history = messagesRef.current
+        .filter((message) => (message.role === "user" || message.role === "assistant") && message.content.trim())
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+        }));
 
       const userMsg: Message = {
         id: `user-${++idCounter.current}`,
@@ -38,7 +108,7 @@ export function useChat(sessionId: string) {
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
-        for await (const event of streamChat(text, sessionId)) {
+        for await (const event of streamChat(text, sessionId, history, modelOverride)) {
           switch (event.type) {
             case "tool_call":
               toolCalls.push({ tool: event.tool!, args: event.args || {} });
@@ -127,10 +197,13 @@ export function useChat(sessionId: string) {
         setIsStreaming(false);
       }
     },
-    [sessionId, isStreaming]
+    [sessionId, isStreaming, modelOverride]
   );
 
-  const clearMessages = useCallback(() => setMessages([]), []);
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    clearCachedMessages(sessionId);
+  }, [sessionId]);
 
   return { messages, isStreaming, error, sendMessage, clearMessages };
 }

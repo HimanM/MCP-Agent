@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 import httpx
 
 from agent.language import detect_language
-from agent.prompts import build_user_message, get_system_prompt
+from agent.prompts import apply_behavior_hint_to_system_prompt, build_user_message, get_system_prompt
 from agent.provider_selector import select_model
 from agent.tools import TOOLS_DEFINITION, build_tool_result_event, coerce_tool_args, execute_tool, format_tool_result_for_model
 from cart.manager import cart_manager
@@ -37,6 +37,13 @@ def _openrouter_tools() -> list[dict]:
 def _tool_has_param(fn_name: str, param: str) -> bool:
     tool_def = next((tool for tool in TOOLS_DEFINITION if tool["name"] == fn_name), {})
     return param in tool_def.get("parameters", {}).get("properties", {})
+
+
+def _format_openrouter_error(exc: Exception) -> str:
+    text = str(exc)
+    if "429" in text:
+        return "The AI model is busy right now. Please wait a little and try again."
+    return f"OpenRouter API error: {exc}"
 
 
 async def _update_context_from_message(session_id: str, user_text: str, ctx: dict) -> dict:
@@ -105,9 +112,10 @@ async def chat(
     session_id: str,
     user_text: str,
     history: list[dict] | None = None,
+    model_override: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     lang = detect_language(user_text)
-    system_prompt = get_system_prompt(lang)
+    system_prompt = apply_behavior_hint_to_system_prompt(get_system_prompt(lang), user_text)
 
     cart_state = await cart_manager.get_cart(session_id)
     ctx = await cart_manager.get_context(session_id)
@@ -117,7 +125,7 @@ async def chat(
         await cart_manager.update_budget(session_id, ctx["budget_max"])
 
     user_message = build_user_message(user_text, cart_state, ctx)
-    model = select_model("openrouter", user_text)
+    model = select_model("openrouter", user_text, model_override=model_override)
 
     messages = [{"role": "system", "content": system_prompt}]
     if history:
@@ -135,7 +143,7 @@ async def chat(
         logger.info("Using OpenRouter model: %s", active_model)
     except Exception as exc:
         logger.exception("OpenRouter API call failed")
-        yield {"type": "error", "error": f"OpenRouter API error: {exc}"}
+        yield {"type": "error", "error": _format_openrouter_error(exc)}
         return
 
     while True:
@@ -198,7 +206,7 @@ async def chat(
         try:
             response, _ = await _call_openrouter(messages, _openrouter_tools(), model)
         except Exception as exc:
-            yield {"type": "error", "error": f"OpenRouter API error: {exc}"}
+            yield {"type": "error", "error": _format_openrouter_error(exc)}
             return
 
     yield {"type": "text", "text": "I'm sorry, I couldn't process that request. Please try again."}

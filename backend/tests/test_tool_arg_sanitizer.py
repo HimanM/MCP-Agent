@@ -94,11 +94,18 @@ class ToolArgSanitizerTest(unittest.TestCase):
         })
 
     def test_search_tool_result_tells_model_to_validate_candidates(self):
-        content = format_tool_result_for_model("search_products", "[]", "gift for a 1 year old", {"q": "gifts"})
+        content = format_tool_result_for_model("search_products", '[{"name":"Cake","product_id":"SKU-1","price":4500,"raw":"ignore-me"}]', "gift for a 1 year old", {"q": "gifts"})
 
         self.assertIn("These are candidates, not recommendations", content)
         self.assertIn("gift for a 1 year old", content)
         self.assertIn("call search_products again with a better query", content)
+        self.assertIn("keep the answer compact", content)
+        self.assertIn("best 3-5 items", content)
+        self.assertIn("one clear next step", content)
+        self.assertIn("closest useful substitute", content)
+        self.assertIn("explain the tradeoff briefly", content)
+        self.assertIn('"name": "Cake"', content)
+        self.assertNotIn("ignore-me", content)
 
     def test_parses_bracketed_failed_generation(self):
         failed_generation = (
@@ -139,6 +146,30 @@ class ToolArgSanitizerTest(unittest.TestCase):
         event = build_tool_result_event("track_order", tracking_json)
         self.assertIn("tracking", event)
         self.assertEqual(event["tracking"]["location"], "Colombo")
+
+    def test_parses_markdown_tracking_result(self):
+        tracking_markdown = """## Order `VCOME12DC0B1` — Delivered
+
+| | |
+|---|---|
+| Total | {'value': '720', 'currency': 'LKR'} |
+| Delivery date | 1 / MAY / 2019 |
+
+**Delivering to**
+- KALPANA NAYANAMADHU
+- CHAMUDI GUNASINGHE 671/C1 BATALANDA ROAD RAGAMA
+
+**Progress**
+- APR 30, 2019 3:14 PM — Order Confirmed and Awaiting preparation
+- MAY 1, 2019 1:32 PM — Order has been delivered
+"""
+
+        parsed = parse_tracking_result(tracking_markdown)
+        self.assertEqual(parsed["order_number"], "VCOME12DC0B1")
+        self.assertEqual(parsed["status"], "Delivered")
+        self.assertEqual(parsed["recipient"], "KALPANA NAYANAMADHU")
+        self.assertEqual(parsed["estimated_delivery"], "1 / MAY / 2019")
+        self.assertEqual(len(parsed["events"]), 2)
 
     def test_parses_checkout_result_and_emits_order_event(self):
         checkout_json = """{

@@ -79,6 +79,17 @@ textarea {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes drawerRise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes floatSoft {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
@@ -188,6 +199,15 @@ textarea {
   background: linear-gradient(90deg, transparent, rgba(200, 105, 58, 0.5), transparent);
 }
 
+.drawer-item {
+  opacity: 0;
+  animation: drawerRise 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.drawer-delay-1 { animation-delay: 0.04s; }
+.drawer-delay-2 { animation-delay: 0.12s; }
+.drawer-delay-3 { animation-delay: 0.2s; }
+
 .floating-card {
   animation: floatSoft 6s ease-in-out infinite;
 }
@@ -200,7 +220,8 @@ textarea {
   .floating-card,
   .animate-fade-in,
   .animate-slide-up,
-  .animate-pop-in {
+  .animate-pop-in,
+  .drawer-item {
     animation: none;
   }
 }

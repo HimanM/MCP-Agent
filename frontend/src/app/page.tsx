@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AudioLines,
@@ -27,9 +28,12 @@ import TrackingCard from "@/components/TrackingCard";
 import { useCart } from "@/hooks/useCart";
 import { type Message, useChat } from "@/hooks/useChat";
 import {
+  addToCart,
+  fetchTracking,
   getBackendMeta,
   type BackendMeta,
   streamChat,
+  transcribeAudio,
   type CheckoutInfoPayload,
   type ProductSummary,
   type TrackingSummary,
@@ -37,15 +41,14 @@ import {
   updateCheckoutInfo,
 } from "@/lib/api";
 import { parseChatCommand } from "@/lib/chat-command";
+import { loadRecentCartSnapshots, type RecentCartSnapshot } from "@/lib/recent-carts";
 import {
-  createRecognition,
-  isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
-  speakText,
+  playAssistantSpeech,
+  subscribeSpeechState,
   stopSpeaking,
-  type RecognitionLike,
 } from "@/lib/speech";
-import { detectUiLanguage, getUiCopy, type UiLanguage } from "@/lib/ui-copy";
+import { getUiCopy, type UiLanguage } from "@/lib/ui-copy";
 
 type ActiveView = "home" | "chat" | "gift" | "track" | "categories" | "offers";
 type RightPanel = "cart" | "checkout" | null;
@@ -79,6 +82,11 @@ type PageCopy = {
   checkoutSavedTitle: string;
   checkoutSavedBody: string;
   cartSummary: (count: number) => string;
+  reorderTitle: string;
+  reorderDescription: string;
+  reorderButton: string;
+  reorderEmpty: string;
+  reorderLastSaved: string;
 };
 
 function generateSessionId() {
@@ -87,7 +95,7 @@ function generateSessionId() {
 
 const SESSION_STORAGE_KEY = "kapruka.chat.session";
 const SESSION_TTL_MS = 5 * 60 * 1000;
-const VOICE_REPLY_STORAGE_KEY = "kapruka.chat.voiceReplies";
+const MODEL_OVERRIDE_STORAGE_KEY = "kapruka.chat.modelOverride";
 
 const PAGE_COPY: Record<UiLanguage, PageCopy> = {
   en: {
@@ -119,6 +127,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout details saved",
     checkoutSavedBody: "Your cart is ready for order review and payment.",
     cartSummary: (count) => `${count} ${count === 1 ? "item" : "items"} in your cart`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
   si: {
     home: "මුල් පිටුව",
@@ -149,6 +162,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout විස්තර සුරකින ලදි",
     checkoutSavedBody: "ඔබගේ cart එක order review සහ payment සඳහා සූදානම්.",
     cartSummary: (count) => `cart එකේ ${count} ${count === 1 ? "item" : "items"}`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
   ta: {
     home: "முகப்பு",
@@ -179,6 +197,11 @@ const PAGE_COPY: Record<UiLanguage, PageCopy> = {
     checkoutSavedTitle: "Checkout விவரங்கள் சேமிக்கப்பட்டது",
     checkoutSavedBody: "உங்கள் cart order review மற்றும் payment க்குத் தயாராக உள்ளது.",
     cartSummary: (count) => `உங்கள் cart-ல் ${count} ${count === 1 ? "item" : "items"}`,
+    reorderTitle: "Buy the same again",
+    reorderDescription: "Recent cart picks are saved from your last shopping sessions so you can restock faster.",
+    reorderButton: "Add all again",
+    reorderEmpty: "Add a few items to cart once and your recent picks will show up here.",
+    reorderLastSaved: "Last saved",
   },
 };
 
@@ -213,23 +236,29 @@ function saveSessionId(sessionId: string) {
   }
 }
 
-function loadVoiceRepliesEnabled() {
-  if (typeof window === "undefined") return false;
+function loadModelOverride() {
+  if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(VOICE_REPLY_STORAGE_KEY) === "1";
+    return window.localStorage.getItem(MODEL_OVERRIDE_STORAGE_KEY);
   } catch {
-    return false;
+    return null;
   }
 }
 
 function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <div
-      className={`grid place-items-center bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] text-accent shadow-[0_10px_28px_rgba(200,105,58,0.18)] ${
+      className={`grid place-items-center overflow-hidden bg-[linear-gradient(180deg,#fff6ef,#f6dfd0)] shadow-[0_10px_28px_rgba(200,105,58,0.18)] ${
         compact ? "h-9 w-9 rounded-xl" : "h-11 w-11 rounded-2xl"
       }`}
     >
-      <Sparkles size={compact ? 18 : 20} />
+      <Image
+        src="/kapruka-mark.svg"
+        alt="Kapruka AI logo"
+        width={compact ? 22 : 26}
+        height={compact ? 22 : 26}
+        priority
+      />
     </div>
   );
 }
@@ -437,7 +466,7 @@ function MobileDrawer({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex flex-col bg-[rgba(255,250,246,0.94)] px-5 py-5 backdrop-blur-xl lg:hidden">
-        <div className="flex items-center justify-between">
+        <div className="drawer-item drawer-delay-1 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BrandMark />
             <div>
@@ -454,7 +483,7 @@ function MobileDrawer({
           </button>
         </div>
 
-        <div className="mt-6 space-y-2">
+        <div className="drawer-item drawer-delay-2 mt-6 space-y-2">
           {items.map((item) => (
             <SidebarLink
               key={item.label}
@@ -477,27 +506,18 @@ function MobileDrawer({
           />
         </div>
 
-        <div className="mt-auto space-y-4">
-          <div className="flex items-center gap-2">
-            {voiceInputSupported ? (
-              <UtilityIconButton
-                icon={<Mic size={16} />}
-                label={isListening ? "Stop voice input" : "Start voice input"}
-                active={isListening}
-                disabled={isStreaming}
-                onClick={onToggleListening}
-              />
-            ) : null}
-            {voiceRepliesSupported ? (
+        <div className="drawer-item drawer-delay-3 mt-auto space-y-4">
+          {voiceRepliesSupported ? (
+            <div className="flex items-center gap-2">
               <UtilityIconButton
                 icon={<AudioLines size={16} />}
-                label={voiceRepliesEnabled ? "Disable voice replies" : "Enable voice replies"}
+                label={voiceRepliesEnabled ? "Stop assistant voice" : "Play latest assistant voice"}
                 active={voiceRepliesEnabled}
                 onClick={onToggleVoiceReplies}
               />
-            ) : null}
-          </div>
-          <LanguageSwitch value={uiLanguage} onChange={onLanguageChange} />
+            </div>
+          ) : null}
+          {false ? <LanguageSwitch value={uiLanguage} onChange={onLanguageChange} /> : null}
         </div>
       </div>
     </>
@@ -510,6 +530,14 @@ function findLatestTracking(messages: Message[]) {
     if (result) return result as TrackingSummary;
   }
   return null;
+}
+
+function formatRecentSavedAt(savedAt: number) {
+  const diffMinutes = Math.max(1, Math.round((Date.now() - savedAt) / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.round(diffHours / 24)}d ago`;
 }
 
 function extractCategoriesFromText(raw: string): CategoryOption[] {
@@ -578,12 +606,12 @@ function TrackOrderPanel({
             value={orderNumber}
             onChange={(event) => setOrderNumber(event.target.value)}
             placeholder={copy.orderPlaceholder}
-            className="h-16 flex-1 rounded-2xl border border-border bg-bg px-4 text-sm text-ink outline-none focus:border-accent md:h-12"
+            className="min-h-[3.75rem] w-full appearance-none rounded-2xl border border-border bg-white px-5 py-4 text-base leading-none text-ink outline-none shadow-[0_8px_24px_rgba(88,54,30,0.04)] focus:border-accent md:h-12 md:min-h-0 md:bg-bg md:px-4 md:py-0 md:text-sm md:shadow-none"
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="h-12 rounded-2xl bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="h-14 rounded-2xl bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50 md:h-12"
           >
             {isLoading ? "Checking..." : copy.trackButton}
           </button>
@@ -626,7 +654,8 @@ function WorkflowPanel({
 
 export default function HomePage() {
   const [sessionId] = useState(loadSessionId);
-  const { messages, isStreaming, error, sendMessage, clearMessages } = useChat(sessionId);
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const { messages, isStreaming, error, sendMessage, clearMessages } = useChat(sessionId, modelOverride);
   const { cart, total, updateQuantity, removeItem, refresh } = useCart(sessionId);
   const [backendMeta, setBackendMeta] = useState<BackendMeta | null>(null);
   const [input, setInput] = useState("");
@@ -649,16 +678,24 @@ export default function HomePage() {
   const [offersLoading, setOffersLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [offersError, setOffersError] = useState<string | null>(null);
-  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() =>
-    detectUiLanguage(typeof navigator === "undefined" ? "" : navigator.language)
-  );
-  const [voiceInputSupported] = useState(isSpeechRecognitionSupported);
-  const [voiceRepliesSupported] = useState(isSpeechSynthesisSupported);
-  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(loadVoiceRepliesEnabled);
+  const [trackingLookup, setTrackingLookup] = useState<TrackingSummary | null>(null);
+  const [trackingLookupBusy, setTrackingLookupBusy] = useState(false);
+  const [trackingLookupError, setTrackingLookupError] = useState<string | null>(null);
+  const [browserReady, setBrowserReady] = useState(false);
+  const [uiLanguage] = useState<UiLanguage>("en");
+  const [voiceInputSupported, setVoiceInputSupported] = useState(false);
+  const [voiceRepliesSupported, setVoiceRepliesSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [micActive, setMicActive] = useState(false);
+  const [activeSpeechKey, setActiveSpeechKey] = useState<string | null>(null);
+  const [recentCarts, setRecentCarts] = useState<RecentCartSnapshot[]>([]);
+  const [reorderBusyId, setReorderBusyId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<RecognitionLike | null>(null);
-  const lastSpokenAssistantRef = useRef("");
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const inputBeforeRecordingRef = useRef("");
+  const mimeTypeRef = useRef("webm");
 
   const uiCopy = getUiCopy(uiLanguage);
   const pageCopy = PAGE_COPY[uiLanguage];
@@ -666,6 +703,12 @@ export default function HomePage() {
   const categoryPrompt = CATEGORY_PROMPT[uiLanguage];
   const budgetValue = budgetDraft || (cart.budget_max != null ? String(cart.budget_max) : "");
   const latestTracking = useMemo(() => findLatestTracking(messages), [messages]);
+  const latestAssistantMessage = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant" && message.content.trim()) || null,
+    [messages]
+  );
+  const latestAssistantSpeechKey = latestAssistantMessage ? `${latestAssistantMessage.id}:${latestAssistantMessage.content}` : null;
+  const isAssistantSpeaking = Boolean(latestAssistantSpeechKey && activeSpeechKey === latestAssistantSpeechKey);
   const fallbackCategoryList = useMemo(() => parseCategoriesFromMessages(messages), [messages]);
   const categoryList = categoryOptions.length ? categoryOptions : fallbackCategoryList;
 
@@ -700,20 +743,45 @@ export default function HomePage() {
   }, [sessionId]);
 
   useEffect(() => {
+    setVoiceInputSupported(
+      typeof window !== "undefined" &&
+        "MediaRecorder" in window &&
+        typeof navigator !== "undefined" &&
+        Boolean(navigator.mediaDevices?.getUserMedia)
+    );
+    setVoiceRepliesSupported(isSpeechSynthesisSupported());
+    setModelOverride(loadModelOverride());
+    setRecentCarts(loadRecentCartSnapshots());
+    setBrowserReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!browserReady) return;
+    setRecentCarts(loadRecentCartSnapshots());
+  }, [browserReady, cart]);
+
+  useEffect(() => {
     return () => {
-      recognitionRef.current?.abort();
+      setMicActive(false);
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
       stopSpeaking();
     };
   }, []);
 
   useEffect(() => {
+    if (!browserReady) return;
     try {
-      window.localStorage.setItem(VOICE_REPLY_STORAGE_KEY, voiceRepliesEnabled ? "1" : "0");
+      if (modelOverride) {
+        window.localStorage.setItem(MODEL_OVERRIDE_STORAGE_KEY, modelOverride);
+      } else {
+        window.localStorage.removeItem(MODEL_OVERRIDE_STORAGE_KEY);
+      }
     } catch {
       // ignore
     }
-    if (!voiceRepliesEnabled) stopSpeaking();
-  }, [voiceRepliesEnabled]);
+  }, [browserReady, modelOverride]);
 
   useEffect(() => {
     if (!messages.length) return;
@@ -721,16 +789,8 @@ export default function HomePage() {
   }, [messages]);
 
   useEffect(() => {
-    if (!voiceRepliesEnabled || isStreaming) return;
-    const latestAssistant = [...messages].reverse().find(
-      (message) => message.role === "assistant" && message.content.trim()
-    );
-    if (!latestAssistant) return;
-    const signature = `${latestAssistant.id}:${latestAssistant.content}`;
-    if (signature === lastSpokenAssistantRef.current) return;
-    lastSpokenAssistantRef.current = signature;
-    speakText(latestAssistant.content);
-  }, [messages, isStreaming, voiceRepliesEnabled]);
+    return subscribeSpeechState(setActiveSpeechKey);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -780,6 +840,23 @@ export default function HomePage() {
     }
   };
 
+  const handleReorder = useCallback(
+    async (snapshot: RecentCartSnapshot) => {
+      setReorderBusyId(snapshot.sessionId);
+      try {
+        for (const item of snapshot.items) {
+          await addToCart(sessionId, item.product_id, 1);
+        }
+        await refresh();
+        setActiveView("chat");
+        setRightPanel("cart");
+      } finally {
+        setReorderBusyId(null);
+      }
+    },
+    [refresh, sessionId]
+  );
+
   const handleBudgetClear = async () => {
     setBudgetSaving(true);
     try {
@@ -799,12 +876,32 @@ export default function HomePage() {
     setRightPanel(panel);
   };
 
+  const toggleLatestAssistantSpeech = useCallback(() => {
+    if (!latestAssistantMessage) return;
+    if (isAssistantSpeaking) {
+      stopSpeaking();
+      return;
+    }
+    void playAssistantSpeech(
+      latestAssistantMessage.content,
+      uiLanguage,
+      Boolean(backendMeta?.tts.configured),
+      latestAssistantSpeechKey || undefined
+    );
+  }, [backendMeta, isAssistantSpeaking, latestAssistantMessage, latestAssistantSpeechKey, uiLanguage]);
+
+  const toggleBackupModel = useCallback(() => {
+    const backupModel = backendMeta?.openrouter.backup_model;
+    if (!backupModel) return;
+    setModelOverride((current) => (current ? null : backupModel));
+  }, [backendMeta]);
+
   const loadCategories = useCallback(async () => {
     setCategoryLoading(true);
     setCategoryError(null);
     try {
       let nextCategories: CategoryOption[] = [];
-      for await (const event of streamChat(categoryPrompt, sessionId)) {
+      for await (const event of streamChat(categoryPrompt, sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.tool === "list_categories" && event.result) {
           nextCategories = extractCategoriesFromText(event.result);
         }
@@ -818,7 +915,7 @@ export default function HomePage() {
     } finally {
       setCategoryLoading(false);
     }
-  }, [categoryPrompt, sessionId]);
+  }, [categoryPrompt, modelOverride, sessionId]);
 
   const loadCategoryProducts = useCallback(async (category: string) => {
     setSelectedCategory(category);
@@ -826,7 +923,7 @@ export default function HomePage() {
     setCategoryError(null);
     setCategoryProducts([]);
     try {
-      for await (const event of streamChat(`Show popular ${category} products on Kapruka with prices`, sessionId)) {
+      for await (const event of streamChat(`Show popular ${category} products on Kapruka with prices`, sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.products?.length) {
           setCategoryProducts(event.products);
         }
@@ -836,14 +933,14 @@ export default function HomePage() {
     } finally {
       setCategoryProductsLoading(false);
     }
-  }, [sessionId]);
+  }, [modelOverride, sessionId]);
 
   const loadOffers = useCallback(async () => {
     setOffersLoading(true);
     setOffersError(null);
     try {
       let products: ProductSummary[] = [];
-      for await (const event of streamChat("Show current Kapruka deals and offers with products and prices", sessionId)) {
+      for await (const event of streamChat("Show current Kapruka deals and offers with products and prices", sessionId, undefined, modelOverride)) {
         if (event.type === "tool_result" && event.products?.length) {
           products = event.products;
         }
@@ -854,7 +951,7 @@ export default function HomePage() {
     } finally {
       setOffersLoading(false);
     }
-  }, [sessionId]);
+  }, [modelOverride, sessionId]);
 
   const activateView = useCallback(
     (nextView: ActiveView) => {
@@ -875,54 +972,98 @@ export default function HomePage() {
     stopSpeaking();
     setSelectedCategory(null);
     setCategoryProducts([]);
+    setTrackingLookup(null);
+    setTrackingLookupError(null);
     setShowNav(false);
     setActiveView("home");
   };
 
-  const handleTrackSubmit = (orderNumber: string) => {
-    dispatchPrompt(`Track Kapruka order ${orderNumber}`, "track");
+  const handleTrackSubmit = async (orderNumber: string) => {
+    setTrackingLookupBusy(true);
+    setTrackingLookupError(null);
+    setTrackingLookup(null);
+    setActiveView("track");
+    try {
+      const next = await fetchTracking(orderNumber);
+      setTrackingLookup(next);
+    } catch {
+      setTrackingLookupError("Unable to load tracking right now. Please recheck the order number and try again.");
+    } finally {
+      setTrackingLookupBusy(false);
+    }
   };
 
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
+  const toggleListening = async () => {
+    if (micActive) {
+      mediaRecorderRef.current?.stop();
       return;
     }
 
-    const recognition = createRecognition("en-US");
-    if (!recognition) return;
-    recognitionRef.current = recognition;
-
-    recognition.onresult = (event: {
-      resultIndex: number;
-      results: { [key: number]: { 0: { transcript: string }; isFinal: boolean }; length: number };
-    }) => {
-      let interim = "";
-      let final = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result[0].transcript;
-        if (result.isFinal) final += transcript;
-        else interim += transcript;
-      }
-
-      const nextValue = (final || interim).trimStart();
-      if (!nextValue) return;
-      setInput(nextValue);
-      if (final.trim()) {
-        recognition.stop();
-        setIsListening(false);
-      }
-    };
-
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      return;
+    }
 
     try {
-      recognition.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+      inputBeforeRecordingRef.current = input.trim();
+
+      const preferredMimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = preferredMimeType ? new MediaRecorder(stream, { mimeType: preferredMimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      mimeTypeRef.current = recorder.mimeType.includes("mp4")
+        ? "mp4"
+        : recorder.mimeType.includes("ogg")
+          ? "ogg"
+          : recorder.mimeType.includes("mpeg")
+            ? "mp3"
+            : recorder.mimeType.includes("wav")
+              ? "wav"
+              : "webm";
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        setMicActive(false);
+        setIsListening(false);
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        audioChunksRef.current = [];
+        if (!audioBlob.size) return;
+
+        try {
+          const result = await transcribeAudio(audioBlob, mimeTypeRef.current);
+          const transcript = result.text.trim();
+          if (!transcript) return;
+          setInput([inputBeforeRecordingRef.current, transcript].filter(Boolean).join(" ").trim());
+        } catch (error) {
+          console.warn("audio-transcription-error", error);
+        }
+      };
+
+      recorder.onerror = () => {
+        setMicActive(false);
+        setIsListening(false);
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      };
+
+      recorder.start();
+      setMicActive(true);
       setIsListening(true);
     } catch {
+      setMicActive(false);
       setIsListening(false);
     }
   };
@@ -934,7 +1075,28 @@ export default function HomePage() {
     { icon: <Tag size={18} />, label: pageCopy.offers, action: () => activateView("offers") },
   ];
 
-  const suggestionActions = uiCopy.suggestions.map((suggestion) => ({
+  const suggestionPresets: Record<UiLanguage, { label: string; prompt: string }[]> = {
+    en: [
+      { label: "Restock groceries", prompt: "Help me restock weekly groceries on Kapruka" },
+      { label: "Phone charger", prompt: "Need a phone charger today, not too expensive" },
+      { label: "Office wear", prompt: "I need something decent to wear for an office function" },
+      { label: "Care flowers", prompt: "Send flowers to my aunt, she is not well" },
+    ],
+    si: [
+      { label: "Groceries නැවත ගන්න", prompt: "Kapruka එකෙන් මගේ සතිපතා groceries නැවත ගන්න උදව් කරන්න" },
+      { label: "Phone charger", prompt: "cheap phone charger ekak ada hoyanna" },
+      { label: "Office wear", prompt: "office function ekakata andinna decent dewal hoyanna" },
+      { label: "Care flowers", prompt: "mage nenda leda, eyata yawanṇa hariyana flowers hoyanna" },
+    ],
+    ta: [
+      { label: "Groceries மீண்டும் வாங்க", prompt: "Kapruka-vil en vaarantha groceries meendum vaanga udhavi sei" },
+      { label: "Phone charger", prompt: "cheap-a phone charger venum, innikku thevai" },
+      { label: "Office wear", prompt: "office function-kku decent-a wear panna edhavadu kaatu" },
+      { label: "Care flowers", prompt: "en aunt nalla illa, avangalukku anuppa suitable flowers kaatu" },
+    ],
+  };
+
+  const suggestionActions = (suggestionPresets[uiLanguage] || uiCopy.suggestions).map((suggestion) => ({
     label: suggestion.label,
     action: () => dispatchPrompt(suggestion.prompt, "chat"),
   }));
@@ -952,8 +1114,10 @@ export default function HomePage() {
         uiLanguage={uiLanguage}
         cartCount={cartCount}
         voiceInputSupported={voiceInputSupported}
-        voiceRepliesEnabled={voiceRepliesEnabled}
+        voiceRepliesEnabled={isAssistantSpeaking}
         isListening={isListening}
+        backupModelEnabled={Boolean(modelOverride)}
+        onToggleBackupModel={toggleBackupModel}
       />
 
       {checkoutSaved ? (
@@ -999,7 +1163,7 @@ export default function HomePage() {
               <p className="mt-4 text-2xl font-semibold text-ink">12,450 pts</p>
             </div>
             <div className="rounded-[1.6rem] border border-border bg-white/70 px-4 py-3">
-              <p className="text-sm font-semibold text-ink">{cart.recipient?.name || "Nadeesha"}</p>
+              <p className="text-sm font-semibold text-ink">{cart.recipient?.name || "HimanM"}</p>
               <p className="mt-1 text-sm text-ink-soft">{cart.delivery?.city || "Gold Member"}</p>
             </div>
           </div>
@@ -1033,22 +1197,13 @@ export default function HomePage() {
             </div>
 
             <div className="ml-auto hidden items-center gap-2 lg:flex">
-              <LanguageSwitch value={uiLanguage} onChange={setUiLanguage} />
-              {voiceInputSupported ? (
-                <UtilityIconButton
-                  icon={<Mic size={18} />}
-                  label={isListening ? "Stop voice input" : "Start voice input"}
-                  active={isListening}
-                  disabled={isStreaming}
-                  onClick={toggleListening}
-                />
-              ) : null}
+              {false ? <LanguageSwitch value={uiLanguage} onChange={() => undefined} /> : null}
               {voiceRepliesSupported ? (
                 <UtilityIconButton
                   icon={<AudioLines size={18} />}
-                  label={voiceRepliesEnabled ? "Disable voice replies" : "Enable voice replies"}
-                  active={voiceRepliesEnabled}
-                  onClick={() => setVoiceRepliesEnabled((current) => !current)}
+                  label={isAssistantSpeaking ? "Stop assistant voice" : "Play latest assistant voice"}
+                  active={isAssistantSpeaking}
+                  onClick={toggleLatestAssistantSpeech}
                 />
               ) : null}
               <button
@@ -1069,7 +1224,7 @@ export default function HomePage() {
                 {showHero ? (
                   <section className="mx-auto flex min-h-full max-w-6xl flex-col items-center justify-center px-1 text-center">
                     <p className="text-xs text-ink-soft md:text-sm">{uiCopy.assistantLabel}</p>
-                    <h1 className="mimo-serif mt-2 max-w-4xl text-[1.9rem] leading-[0.98] text-ink sm:mt-4 sm:text-[4rem] lg:text-[5.3rem]">
+                    <h1 className="mimo-serif mt-2 max-w-3xl text-[1.9rem] leading-[0.98] text-ink sm:mt-4 sm:text-[3.6rem] lg:text-[4.6rem]">
                       {uiCopy.heroTitle}
                     </h1>
                     <div className="hero-divider my-4 md:my-5" />
@@ -1083,11 +1238,7 @@ export default function HomePage() {
                       ))}
                     </div>
 
-                    <div className="mt-5 w-full max-w-md px-2 py-2 md:mt-8 md:max-w-none md:rounded-[1.6rem] md:border md:border-[rgba(200,105,58,0.12)] md:bg-[linear-gradient(180deg,rgba(250,239,229,0.88),rgba(255,255,255,0.92))] md:px-6 md:py-5 md:shadow-[0_12px_30px_rgba(88,54,30,0.05)]">
-                      <p className="text-base text-ink">{uiCopy.heroExample}</p>
-                    </div>
-
-                    <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-8 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
+                    <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-2 md:mt-7 md:flex md:max-w-none md:flex-wrap md:justify-center md:gap-3">
                       {suggestionActions.map((item) => (
                         <button
                           key={item.label}
@@ -1106,7 +1257,12 @@ export default function HomePage() {
                   </div>
                 ) : activeView === "track" ? (
                   <div className="flex min-h-full items-start justify-center py-1 md:items-center md:py-6">
-                    <TrackOrderPanel tracking={latestTracking} isLoading={isStreaming} onSubmit={handleTrackSubmit} copy={pageCopy} />
+                    <TrackOrderPanel
+                      tracking={trackingLookup || latestTracking}
+                      isLoading={trackingLookupBusy}
+                      onSubmit={handleTrackSubmit}
+                      copy={pageCopy}
+                    />
                   </div>
                 ) : activeView === "categories" ? (
                   <WorkflowPanel
@@ -1270,12 +1426,20 @@ export default function HomePage() {
                     </div>
 
                     {messages.map((msg) => (
-                      <ChatMessage key={msg.id} message={msg} sessionId={sessionId} onAdded={refresh} />
+                      <ChatMessage
+                        key={msg.id}
+                        message={msg}
+                        sessionId={sessionId}
+                        onAdded={refresh}
+                        language={uiLanguage}
+                        ttsApiEnabled={Boolean(backendMeta?.tts.configured)}
+                        isStreaming={isStreaming && msg.id === messages[messages.length - 1]?.id && msg.role === "assistant"}
+                      />
                     ))}
 
                     {isStreaming && messages[messages.length - 1]?.role === "user" ? (
                       <div className="animate-fade-in flex justify-start">
-                        <div className="rounded-[1.5rem] rounded-bl-md border border-border bg-white px-4 py-3 shadow-[0_12px_28px_rgba(88,54,30,0.05)]">
+                        <div className="rounded-[1.5rem] rounded-tl-md border border-border bg-white px-4 py-3 shadow-[0_12px_28px_rgba(88,54,30,0.05)]">
                           <div className="flex items-center gap-1.5">
                             <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
                             <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
@@ -1286,6 +1450,12 @@ export default function HomePage() {
                     ) : null}
                   </div>
                 )}
+
+                {trackingLookupError ? (
+                  <div className="mt-6 flex justify-center">
+                    <span className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm text-danger">{trackingLookupError}</span>
+                  </div>
+                ) : null}
 
                 {error ? (
                   <div className="mt-6 flex justify-center">
@@ -1304,7 +1474,7 @@ export default function HomePage() {
                         event.preventDefault();
                         submitCurrentMessage();
                       }}
-                      className="flex items-center gap-2 rounded-[1.35rem] border border-border bg-white px-3 py-2.5 md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3 md:shadow-[0_14px_34px_rgba(88,54,30,0.06)]"
+                      className="flex items-center gap-1.5 rounded-[1.2rem] border border-border bg-white px-2.5 py-2 md:gap-3 md:rounded-[1.7rem] md:px-4 md:py-3 md:shadow-[0_14px_34px_rgba(88,54,30,0.06)]"
                     >
                       <button
                         type="button"
@@ -1325,12 +1495,26 @@ export default function HomePage() {
                         }}
                         placeholder={uiCopy.inputPlaceholder}
                         disabled={isStreaming}
-                        className="h-11 min-w-0 flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-muted disabled:opacity-40 md:h-12"
+                        className="h-10 min-w-0 flex-1 bg-transparent px-1 text-[15px] text-ink outline-none placeholder:text-muted disabled:opacity-40 md:h-12 md:text-sm"
                       />
+                      <button
+                        type="button"
+                        onClick={toggleListening}
+                        disabled={isStreaming || !voiceInputSupported}
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border md:h-12 md:w-12 md:rounded-2xl ${
+                          micActive
+                            ? "border-accent bg-accent text-white"
+                            : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        aria-label={micActive ? "Stop voice input" : "Start voice input"}
+                        title={voiceInputSupported ? (micActive ? "Stop voice input" : "Start voice input") : "Voice input not supported in this browser"}
+                      >
+                        <Mic size={18} />
+                      </button>
                       <button
                         type="submit"
                         disabled={isStreaming}
-                        className="grid h-11 w-11 shrink-0 place-items-center rounded-[1rem] bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-12 md:w-12 md:rounded-2xl"
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-[1rem] bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-12 md:w-12 md:rounded-2xl"
                         aria-label="Send message"
                       >
                         <SendHorizontal size={18} />
@@ -1345,21 +1529,17 @@ export default function HomePage() {
       </div>
 
       {rightPanel ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-[rgba(37,24,18,0.18)] backdrop-blur-[2px]"
-          aria-label="Close side panel"
-          onClick={() => setRightPanel(null)}
-        />
-      ) : null}
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-[rgba(37,24,18,0.18)] backdrop-blur-[2px]"
+            aria-label="Close side panel"
+            onClick={() => setRightPanel(null)}
+          />
 
-      <aside
-        className={`fixed inset-y-3 right-3 z-50 flex w-[min(92vw,25rem)] flex-col rounded-[2rem] py-2 transition-transform duration-300 ${
-          rightPanel ? "translate-x-0" : "translate-x-[110%]"
-        }`}
-      >
-        <div className="glass-panel flex h-full min-h-0 flex-col rounded-[2rem] px-4 py-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <aside className="fixed inset-0 z-50 flex flex-col transition-opacity duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] opacity-100 lg:inset-y-3 lg:right-3 lg:left-auto lg:w-[min(92vw,25rem)] lg:py-2">
+            <div className="glass-panel flex h-full min-h-0 flex-col rounded-none px-5 py-5 transition-transform duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] translate-y-0 lg:translate-x-0 lg:rounded-[2rem] lg:px-4">
+          <div className="drawer-item drawer-delay-1 mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-ink">
                 {rightPanel === "checkout" ? "Checkout overview" : uiCopy.cart}
@@ -1374,12 +1554,13 @@ export default function HomePage() {
               type="button"
               onClick={() => setRightPanel(null)}
               className="grid h-10 w-10 place-items-center rounded-full border border-border bg-white text-ink-soft"
+              aria-label="Close cart panel"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-[1.4rem] border border-border bg-white/80 p-1">
+          <div className="drawer-item drawer-delay-2 mb-4 grid grid-cols-2 gap-2 rounded-[1.4rem] border border-border bg-white/80 p-1">
             <button
               type="button"
               onClick={() => setRightPanel("cart")}
@@ -1401,7 +1582,7 @@ export default function HomePage() {
           </div>
 
           {rightPanel === "checkout" ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+            <div className="drawer-item drawer-delay-3 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
               <CheckoutSummaryCard
                 recipientName={cart.recipient?.name}
                 deliveryCity={cart.delivery?.city}
@@ -1421,7 +1602,7 @@ export default function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[1.6rem] border border-border bg-white/70">
+            <div className="drawer-item drawer-delay-3 min-h-0 flex-1 overflow-hidden rounded-[1.6rem] border border-border bg-white/70">
               <Cart
                 cart={cart}
                 total={total}
@@ -1436,41 +1617,45 @@ export default function HomePage() {
               />
             </div>
           )}
-        </div>
-      </aside>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
-      <CheckoutDrawer
-        key={[
-          cart.recipient?.name || "",
-          cart.recipient?.phone || "",
-          cart.delivery?.address || "",
-          cart.delivery?.city || "",
-          cart.delivery?.date || "",
-          cart.sender?.name || "",
-          cart.gift_message || "",
-        ].join("|")}
-        open={showCheckout}
-        cart={cart}
-        total={total}
-        onClose={() => setShowCheckout(false)}
-        onSubmit={handleCheckoutSubmit}
-        isSaving={checkoutSaving}
-        error={checkoutError}
-      />
+      {showCheckout ? (
+        <CheckoutDrawer
+          key={[
+            cart.recipient?.name || "",
+            cart.recipient?.phone || "",
+            cart.delivery?.address || "",
+            cart.delivery?.city || "",
+            cart.delivery?.date || "",
+            cart.sender?.name || "",
+            cart.gift_message || "",
+          ].join("|")}
+          open={showCheckout}
+          cart={cart}
+          total={total}
+          onClose={() => setShowCheckout(false)}
+          onSubmit={handleCheckoutSubmit}
+          isSaving={checkoutSaving}
+          error={checkoutError}
+        />
+      ) : null}
       {showNav ? (
         <MobileDrawer
           activeView={activeView}
           onChange={activateView}
           onClose={() => setShowNav(false)}
           uiLanguage={uiLanguage}
-          onLanguageChange={setUiLanguage}
+          onLanguageChange={() => undefined}
           voiceInputSupported={voiceInputSupported}
           voiceRepliesSupported={voiceRepliesSupported}
-          voiceRepliesEnabled={voiceRepliesEnabled}
+          voiceRepliesEnabled={isAssistantSpeaking}
           isListening={isListening}
           isStreaming={isStreaming}
           onToggleListening={toggleListening}
-          onToggleVoiceReplies={() => setVoiceRepliesEnabled((current) => !current)}
+          onToggleVoiceReplies={toggleLatestAssistantSpeech}
           onNewChat={handleNewChat}
           copy={pageCopy}
           giftAdvisorLabel={uiCopy.giftAdvisor}

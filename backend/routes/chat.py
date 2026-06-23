@@ -9,8 +9,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from agent.tools import parse_tracking_result
 from agent.provider_selector import resolve_provider_config
 from config import settings
+from mcp.client import mcp_client
 from rate_limit import rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
     history: list[dict] | None = None
+    model_override: str | None = None
 
 
 def _needs_order_number_prompt(message_text: str) -> bool:
@@ -36,7 +39,7 @@ def _needs_order_number_prompt(message_text: str) -> bool:
             "delivery status",
         )
     )
-    has_order_number = bool(re.search(r"\b\d{5,}\b", message_text))
+    has_order_number = bool(re.search(r"\b(?=[A-Za-z0-9-]{6,}\b)(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]+\b", message_text))
     return asks_to_track and not has_order_number
 
 
@@ -84,7 +87,7 @@ def _client_ip(req: Request) -> str:
 @router.post('/chat')
 async def chat_endpoint(req: ChatRequest, request: Request):
     session_id = req.session_id or str(uuid.uuid4())
-    provider_config = resolve_provider_config(req.message)
+    provider_config = resolve_provider_config(req.message, model_override=req.model_override)
     allowed, retry_after = await rate_limiter.check(
         f"chat:{_client_ip(request)}",
         settings.rate_limit_requests_per_window,
@@ -116,7 +119,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         last_error = 'No LLM provider is configured.'
 
         for provider in candidates:
-            candidate_config = resolve_provider_config(req.message)
+            candidate_config = resolve_provider_config(req.message, model_override=req.model_override)
             model = candidate_config.model if candidate_config.provider == provider else ""
             chat_fn = _provider_chat_fn(provider)
             if chat_fn is None:
@@ -130,7 +133,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                 produced_output = False
                 first_event = True
 
-                async for event in chat_fn(session_id, req.message, req.history or []):
+                async for event in chat_fn(session_id, req.message, req.history or [], model_override=req.model_override):
                     is_fallback_error = (
                         first_event
                         and event.get('type') == 'error'
@@ -167,3 +170,28 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         yield 'data: [DONE]\n\n'
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')
+
+
+@router.get('/track-order/{order_number}')
+async def track_order_endpoint(order_number: str, request: Request):
+    allowed, retry_after = await rate_limiter.check(
+        f"track:{_client_ip(request)}",
+        settings.rate_limit_requests_per_window,
+        settings.rate_limit_window_seconds,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    raw = await mcp_client.call_tool("kapruka_track_order", {"order_number": order_number})
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=502, detail="Unexpected tracking response from Kapruka MCP.")
+
+    tracking = parse_tracking_result(raw)
+    if not tracking.get("order_number") and not tracking.get("status") and not tracking.get("events"):
+        raise HTTPException(status_code=404, detail="No tracking details found for that order number.")
+
+    return tracking

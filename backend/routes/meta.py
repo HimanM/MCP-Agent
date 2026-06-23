@@ -23,6 +23,19 @@ async def meta():
         "provider": provider_config.provider,
         "model": provider_config.model,
         "high_density_default": provider_config.is_high_density,
+        "openrouter": {
+            "default_model": settings.openrouter_fast_model,
+            "backup_model": settings.openrouter_backup_model,
+        },
+        "tts": {
+            "configured": settings.elevenlabs_enabled,
+            "provider": "elevenlabs" if settings.elevenlabs_enabled else "none",
+        },
+        "stt": {
+            "configured": settings.groq_stt_enabled or settings.openrouter_stt_enabled,
+            "provider": "groq" if settings.groq_stt_enabled else ("openrouter" if settings.openrouter_stt_enabled else "none"),
+            "model": settings.groq_stt_model if settings.groq_stt_enabled else (settings.openrouter_stt_model if settings.openrouter_stt_enabled else ""),
+        },
         "mcp": {
             "server_url": settings.mcp_server_url,
             "connected": connected,

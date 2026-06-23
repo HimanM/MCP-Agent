@@ -25,6 +25,19 @@ export interface BackendMeta {
   provider: string;
   model: string;
   high_density_default: boolean;
+  openrouter: {
+    default_model: string;
+    backup_model: string;
+  };
+  tts: {
+    configured: boolean;
+    provider: string;
+  };
+  stt: {
+    configured: boolean;
+    provider: string;
+    model: string;
+  };
   mcp: {
     server_url: string;
     connected: boolean;
@@ -114,12 +127,13 @@ export interface ChatEvent {
 export async function* streamChat(
   message: string,
   sessionId: string,
-  history?: { role: string; content: string }[]
+  history?: { role: string; content: string }[],
+  modelOverride?: string | null
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, session_id: sessionId, history }),
+    body: JSON.stringify({ message, session_id: sessionId, history, model_override: modelOverride || null }),
   });
 
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
@@ -214,5 +228,70 @@ export function createWsUrl(sessionId: string) {
 
 export async function getBackendMeta(): Promise<BackendMeta> {
   const res = await fetch(`${API_URL}/api/meta`);
+  return res.json();
+}
+
+export async function fetchTtsAudio(text: string, language: string) {
+  const res = await fetch(`${API_URL}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language }),
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || "";
+    } catch {
+      // ignore
+    }
+    throw new Error(detail ? `TTS failed: ${detail}` : `TTS failed: ${res.status}`);
+  }
+  return res.blob();
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const base64 = result.split(",")[1] || "";
+      if (!base64) {
+        reject(new Error("Unable to encode audio"));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Unable to read audio"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function transcribeAudio(blob: Blob, format: string) {
+  const audioBase64 = await blobToBase64(blob);
+  const res = await fetch(`${API_URL}/api/stt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_base64: audioBase64, format }),
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || "";
+    } catch {
+      // ignore
+    }
+    throw new Error(detail ? `STT failed: ${detail}` : `STT failed: ${res.status}`);
+  }
+
+  return res.json() as Promise<{ text: string }>;
+}
+
+export async function fetchTracking(orderNumber: string): Promise<TrackingSummary> {
+  const res = await fetch(`${API_URL}/api/track-order/${encodeURIComponent(orderNumber)}`);
+  if (!res.ok) throw new Error(`Tracking failed: ${res.status}`);
   return res.json();
 }

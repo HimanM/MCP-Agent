@@ -1,11 +1,13 @@
 "use client";
 
-import { Bot, Sparkles, Truck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, ChevronLeft, ChevronRight, Play, Sparkles, Square, Truck } from "lucide-react";
 import PayLinkCard from "@/components/PayLinkCard";
 import ProductCard from "@/components/ProductCard";
 import TrackingCard from "@/components/TrackingCard";
 import { Message } from "@/hooks/useChat";
 import type { OrderSummary, ProductSummary, TrackingSummary } from "@/lib/api";
+import { playAssistantSpeech, stopSpeaking, subscribeSpeechState } from "@/lib/speech";
 
 function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown> }) {
   const labels: Record<string, string> = {
@@ -40,22 +42,54 @@ function ToolProducts({
   sessionId: string;
   onAdded?: () => void | Promise<void>;
 }) {
+  const railRef = useRef<HTMLDivElement | null>(null);
   if (!products.length) return null;
+
+  const scrollRail = (direction: "left" | "right") => {
+    const rail = railRef.current;
+    if (!rail) return;
+    rail.scrollBy({ left: direction === "right" ? rail.clientWidth * 0.85 : -rail.clientWidth * 0.85, behavior: "smooth" });
+  };
 
   return (
     <div className="mt-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-ink">Products found</p>
-        <span className="text-xs text-muted">Tap a card to open the product page</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted">Swipe or use arrows to view more</span>
+          {products.length > 2 ? (
+            <div className="hidden items-center gap-1 md:flex">
+              <button
+                type="button"
+                onClick={() => scrollRail("left")}
+                className="grid h-8 w-8 place-items-center rounded-full border border-border bg-bg text-ink-soft hover:text-ink"
+                aria-label="Scroll products left"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollRail("right")}
+                className="grid h-8 w-8 place-items-center rounded-full border border-border bg-bg text-ink-soft hover:text-ink"
+                aria-label="Scroll products right"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
-      <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div
+        ref={railRef}
+        className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {products.map((product) => (
-          <ProductCard
+          <div
             key={product.product_id || product.product_url || product.name}
-            product={product}
-            sessionId={sessionId}
-            onAdded={onAdded}
-          />
+            className="w-[11.5rem] shrink-0 snap-start sm:w-[13rem] md:w-[15rem] xl:w-[16rem]"
+          >
+            <ProductCard product={product} sessionId={sessionId} onAdded={onAdded} />
+          </div>
         ))}
       </div>
     </div>
@@ -143,10 +177,16 @@ export default function ChatMessage({
   message,
   sessionId,
   onAdded,
+  language = "en",
+  ttsApiEnabled = false,
+  isStreaming = false,
 }: {
   message: Message;
   sessionId: string;
   onAdded?: () => void | Promise<void>;
+  language?: string;
+  ttsApiEnabled?: boolean;
+  isStreaming?: boolean;
 }) {
   const isUser = message.role === "user";
   const rawProducts: ProductSummary[] =
@@ -155,56 +195,119 @@ export default function ChatMessage({
     const key = product.product_id || product.product_url || product.name;
     return array.findIndex((item) => (item.product_id || item.product_url || item.name) === key) === index;
   });
-  const productResults = message.content
-    ? uniqueProducts.filter((product) => isProductReferenced(product, message.content)).slice(0, 6)
+  const referencedProducts = message.content
+    ? uniqueProducts.filter((product) => isProductReferenced(product, message.content))
     : [];
+  const productResults = (referencedProducts.length ? referencedProducts : uniqueProducts).slice(0, 10);
   const hasProducts = !isUser && productResults.length > 0;
   const trackingResult =
     message.toolResults?.map((entry) => entry.tracking).find((entry): entry is TrackingSummary => Boolean(entry)) || null;
   const orderResult =
     message.toolResults?.map((entry) => entry.order).find((entry): entry is OrderSummary => Boolean(entry)) || null;
+  const canPlayVoice = !isUser && Boolean(message.content?.trim());
+  const showLoadingDots = !isUser && isStreaming;
+  const bubbleClass = hasProducts ? "w-full max-w-none" : isUser ? "max-w-[min(92%,48rem)]" : "max-w-[min(96%,64rem)]";
+  const speechKey = useMemo(() => `${message.id}:${message.content}`, [message.id, message.content]);
+  const speechSummary = useMemo(() => buildSpeechSummary(message.content || "", productResults), [message.content, productResults]);
+  const [activeSpeechKey, setActiveSpeechKey] = useState<string | null>(null);
+  const isSpeaking = activeSpeechKey === speechKey;
+
+  useEffect(() => subscribeSpeechState(setActiveSpeechKey), []);
 
   return (
-    <div className={`animate-fade-in flex ${isUser ? "justify-end" : "justify-start"} ${hasProducts ? "w-full" : ""}`}>
-      <div className={`${hasProducts ? "w-full max-w-none" : "max-w-[96%]"} flex gap-3`}>
-        {!isUser ? (
+    <div className="animate-fade-in w-full">
+      {isUser ? (
+        <div className="flex w-full justify-end">
+          <div
+            className={`${bubbleClass} rounded-[1.6rem] rounded-br-md bg-[linear-gradient(180deg,#f3dfcf,#efcfb5)] px-4 py-3 text-sm leading-relaxed text-ink shadow-[0_10px_30px_rgba(37,36,31,0.04)]`}
+          >
+            {message.content ? <MessageBody content={message.content} hasProducts={false} /> : null}
+          </div>
+        </div>
+      ) : (
+        <div className="flex w-full items-start gap-3">
           <div className="hidden pt-1 sm:block">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(180deg,#fff3ea,#f2dccb)] text-accent">
               <Bot size={16} />
             </div>
           </div>
-        ) : null}
 
-        <div
-          className={`${
-            hasProducts ? "w-full max-w-none" : "max-w-[92%]"
-          } rounded-[1.6rem] px-4 py-3 text-sm leading-relaxed shadow-[0_10px_30px_rgba(37,36,31,0.04)] ${
-            isUser
-              ? "rounded-br-md bg-[linear-gradient(180deg,#f3dfcf,#efcfb5)] text-ink"
-              : "rounded-bl-md border border-border bg-white text-ink"
-          }`}
-        >
-          {message.toolCalls && message.toolCalls.length > 0 ? (
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <ToolBadge tool={message.toolCalls[message.toolCalls.length - 1].tool} args={message.toolCalls[message.toolCalls.length - 1].args} />
-              {message.toolCalls.length > 1 ? <span className="text-xs text-ink-soft">{message.toolCalls.length} steps</span> : null}
-            </div>
-          ) : null}
+          <div
+            className={`${bubbleClass} rounded-[1.6rem] rounded-tl-md border border-border bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-[0_10px_30px_rgba(37,36,31,0.04)]`}
+          >
+            {message.toolCalls && message.toolCalls.length > 0 ? (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <ToolBadge tool={message.toolCalls[message.toolCalls.length - 1].tool} args={message.toolCalls[message.toolCalls.length - 1].args} />
+                {message.toolCalls.length > 1 ? <span className="text-xs text-ink-soft">{message.toolCalls.length} steps</span> : null}
+              </div>
+            ) : null}
 
-          {message.content ? <MessageBody content={message.content} hasProducts={hasProducts} /> : null}
-          {hasProducts ? <ToolProducts products={productResults} sessionId={sessionId} onAdded={onAdded} /> : null}
-          {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
-          {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
+            {message.content ? <MessageBody content={message.content} hasProducts={hasProducts} /> : null}
+            {showLoadingDots ? (
+              <div className="mt-3 flex items-center gap-1.5">
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+              </div>
+            ) : null}
+            {canPlayVoice ? (
+              <div className="mt-3 flex justify-end">
+                <div className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isSpeaking) {
+                        stopSpeaking();
+                        return;
+                      }
+                      void playAssistantSpeech(speechSummary || message.content, language, ttsApiEnabled, speechKey);
+                    }}
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+                      isSpeaking
+                        ? "border-accent bg-accent text-white"
+                        : "border-border bg-bg text-ink-soft hover:border-border-hover hover:text-ink"
+                    }`}
+                  >
+                    {isSpeaking ? <Square size={13} /> : <Play size={13} />}
+                    {isSpeaking ? "Stop" : "Play"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {hasProducts ? <ToolProducts products={productResults} sessionId={sessionId} onAdded={onAdded} /> : null}
+            {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
+            {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
 
-          {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
-            <div className="flex items-center gap-1.5 py-1">
-              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
-              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
-              <div className={`typing-dot h-2 w-2 rounded-full ${isUser ? "bg-ink/60" : "bg-muted"}`} />
-            </div>
-          ) : null}
+            {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
+              <div className="flex items-center gap-1.5 py-1">
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+function buildSpeechSummary(content: string, products: ProductSummary[]) {
+  const summary = content
+    .split(/Products found/i)[0]
+    .split(/\n+/)
+    .map((line) => normalizeLine(line, false))
+    .filter(Boolean)
+    .filter((line) => !/filenotfound|view product|sku-|product_id|added_by|image_url|https?:\/\//i.test(line!))
+    .join(" ")
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const topProducts = products.slice(0, 3).map((product) => product.name).filter(Boolean);
+  return [summary, topProducts.length ? `Top picks include ${topProducts.join(", ")}.` : ""]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 420)
+    .trim();
 }

@@ -63,9 +63,9 @@ Use the same environment set across the project:
 ```env
 LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=your-openrouter-api-key
-OPENROUTER_MODEL=openai/gpt-4o-mini
-OPENROUTER_FAST_MODEL=openai/gpt-4o-mini
-OPENROUTER_REASONING_MODEL=openai/gpt-4o-mini
+OPENROUTER_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_FAST_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_REASONING_MODEL=google/gemma-4-31b-it:free
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_SITE_URL=https://kapruka-mcp-agent.vercel.app
 OPENROUTER_APP_NAME=Kapruka Shopper

@@ -15,8 +15,13 @@ const bodyFont = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Kapruka AI Shop",
-  description: "A polished MCP-powered shopping assistant for Kapruka",
+  title: "Kapruka AI Shopping Assistant",
+  description: "Challenge submission for the Kapruka Agent Challenge: an MCP-powered shopping assistant with chat, cart, checkout, gifting, and order tracking.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -2,6 +2,7 @@
 
 import { MapPin, PackageCheck } from "lucide-react";
 import type { TrackingSummary } from "@/lib/api";
+import { getTrackingHeadline, getTrackingSupportGuidance } from "@/lib/tracking";
 
 function statusTone(status: string) {
   const normalized = status.toLowerCase();
@@ -15,6 +16,8 @@ function statusTone(status: string) {
 export default function TrackingCard({ tracking }: { tracking: TrackingSummary }) {
   const hasEvents = tracking.events.length > 0;
   const hasItems = tracking.items.length > 0;
+  const headline = getTrackingHeadline(tracking);
+  const support = getTrackingSupportGuidance(tracking);
 
   if (!tracking.order_number && !tracking.status && !hasEvents) return null;
 
@@ -42,6 +45,21 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
 
       <div className="grid gap-4 px-1 py-3 md:grid-cols-[1.1fr_0.9fr] md:px-4 md:py-4">
         <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-bg px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">What this means</p>
+            <p className="mt-2 text-sm leading-6 text-ink">{headline.summary}</p>
+            <p className="mt-3 text-sm leading-6 text-ink-soft">{headline.nextStep}</p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-white px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Next likely step</p>
+            <p className="mt-2 text-sm leading-6 text-ink">{support.expectation}</p>
+            <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-muted">Need help?</p>
+            <p className="mt-2 text-sm leading-6 text-ink-soft">{support.support}</p>
+            <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-muted">Order edits</p>
+            <p className="mt-2 text-sm leading-6 text-ink-soft">{support.editNote}</p>
+          </div>
+
           {(tracking.estimated_delivery || tracking.location) ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {tracking.estimated_delivery ? (

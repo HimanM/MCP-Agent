@@ -300,6 +300,39 @@ def parse_tracking_result(text: str) -> dict:
     if not raw:
         return result
 
+    if not raw.lstrip().startswith("{"):
+        heading_match = re.search(r"##\s+Order\s+`?([^`\s]+)`?\s+[—-]\s+([^\n]+)", raw)
+        if heading_match:
+            result["order_number"] = heading_match.group(1).strip()
+            result["status"] = heading_match.group(2).strip()
+
+        recipient_match = re.search(r"\*\*Delivering to\*\*\s*-?\s*\n?-\s*([^\n]+)", raw, re.IGNORECASE)
+        if recipient_match:
+            result["recipient"] = recipient_match.group(1).strip()
+
+        location_match = re.search(r"\n-\s*[^\n]+\n-\s*([^\n]+)", raw)
+        if location_match:
+            result["location"] = location_match.group(1).replace("<BR", "").strip()
+
+        delivery_match = re.search(r"\|\s*Delivery date\s*\|\s*([^|]+?)\s*\|", raw, re.IGNORECASE)
+        if delivery_match:
+            result["estimated_delivery"] = delivery_match.group(1).strip()
+
+        item_match = re.search(r"\|\s*Total\s*\|\s*([^|]+?)\s*\|", raw, re.IGNORECASE)
+        if item_match:
+            result["items"].append({"name": f"Order total {item_match.group(1).strip()}", "quantity": None})
+
+        for progress in re.finditer(r"^\s*-\s*([A-Z][^\n—]+?)\s+—\s+([^\n]+)$", raw, re.MULTILINE):
+            result["events"].append(
+                {
+                    "label": progress.group(2).strip(),
+                    "time": progress.group(1).strip(),
+                    "location": "",
+                }
+            )
+
+        return result
+
     try:
         data = json.loads(raw) if isinstance(raw, str) else raw
     except json.JSONDecodeError:
@@ -462,15 +495,37 @@ def format_tool_result_for_model(tool_name: str, result: Any, user_text: str, ar
     if tool_name != "search_products":
         return str(result)
 
+    concise_results = result
+    try:
+        parsed = json.loads(result) if isinstance(result, str) else result
+        if isinstance(parsed, list):
+            concise_results = json.dumps(
+                [
+                    {
+                        "name": item.get("name", ""),
+                        "product_id": item.get("product_id", ""),
+                        "price": item.get("price", 0),
+                        "product_url": item.get("product_url", ""),
+                    }
+                    for item in parsed[:10]
+                    if isinstance(item, dict)
+                ]
+            )
+    except Exception:
+        concise_results = result
+
     return (
         "<search_result_candidates>\n"
         f"user_request: {user_text}\n"
         f"search_query: {args.get('q', '')}\n"
-        f"results: {result}\n"
+        f"results: {concise_results}\n"
         "</search_result_candidates>\n\n"
         "These are candidates, not recommendations. Before answering, compare each candidate to the user's actual intent. "
         "Recommend only clear matches. If the candidates do not fit the request, call search_products again with a better query. "
-        "Do not show irrelevant products just because they appeared in the search result."
+        "Do not show irrelevant products just because they appeared in the search result. "
+        "If an exact match is still unavailable after sensible retries, suggest the closest useful substitute and explain the tradeoff briefly. "
+        "For product-heavy requests, keep the answer compact: lead with one short recommendation or plan, show only the best 3-5 items, "
+        "and end with one clear next step."
     )
 
 

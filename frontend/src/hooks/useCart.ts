@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getCart, updateCartItem, removeCartItem, createWsUrl, CartState } from "@/lib/api";
+import { saveRecentCartSnapshot } from "@/lib/recent-carts";
 
 const emptyCart: CartState = {
   session_id: "",
@@ -21,12 +22,17 @@ export function useCart(sessionId: string) {
   const fetchCart = useCallback(async () => {
     try {
       const data = await getCart(sessionId);
-      setCart(data.cart);
-      setTotal(data.total);
+      const nextCart = data.cart || emptyCart;
+      setCart(nextCart);
+      setTotal(data.total || 0);
     } catch {
       // ignore
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    if (cart.items.length) saveRecentCartSnapshot(cart);
+  }, [cart]);
 
   useEffect(() => {
     let isActive = true;
@@ -35,8 +41,8 @@ export function useCart(sessionId: string) {
     getCart(sessionId)
       .then((data) => {
         if (!isActive) return;
-        setCart(data.cart);
-        setTotal(data.total);
+        setCart(data.cart || emptyCart);
+        setTotal(data.total || 0);
       })
       .catch(() => {
         // ignore
@@ -53,9 +59,9 @@ export function useCart(sessionId: string) {
         try {
           const data = JSON.parse(e.data);
           if (data.type === "cart_updated" && data.cart) {
-            setCart(data.cart);
+            setCart(data.cart || emptyCart);
             setTotal(
-              data.cart.items.reduce(
+              (data.cart.items || []).reduce(
                 (sum: number, i: { price: number; quantity: number }) => sum + i.price * i.quantity,
                 0
               )
@@ -89,8 +95,8 @@ export function useCart(sessionId: string) {
   const updateQuantity = useCallback(
     async (productId: string, quantity: number) => {
       const data = await updateCartItem(sessionId, productId, quantity);
-      setCart(data.cart);
-      setTotal(data.total);
+      setCart(data.cart || emptyCart);
+      setTotal(data.total || 0);
     },
     [sessionId]
   );
@@ -98,8 +104,8 @@ export function useCart(sessionId: string) {
   const removeItem = useCallback(
     async (productId: string) => {
       const data = await removeCartItem(sessionId, productId);
-      setCart(data.cart);
-      setTotal(data.total);
+      setCart(data.cart || emptyCart);
+      setTotal(data.total || 0);
     },
     [sessionId]
   );

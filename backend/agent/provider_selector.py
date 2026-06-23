@@ -64,7 +64,7 @@ def select_provider(message_text: str = "") -> str:
     return "openrouter" if settings.openrouter_api_key else ("groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "none"))
 
 
-def select_model(provider: str, message_text: str = "") -> str:
+def select_model(provider: str, message_text: str = "", model_override: str | None = None) -> str:
     high_density = is_high_density_request(message_text)
     provider = normalize_provider(provider)
 
@@ -73,6 +73,8 @@ def select_model(provider: str, message_text: str = "") -> str:
     if provider == "gemini":
         return settings.gemini_reasoning_model if high_density else settings.gemini_fast_model or settings.gemini_model
     if provider == "openrouter":
+        if model_override:
+            return model_override
         if settings.openrouter_model:
             return settings.openrouter_model
         return settings.openrouter_reasoning_model if high_density else settings.openrouter_fast_model
@@ -89,10 +91,10 @@ class ProviderConfig:
     is_high_density: bool
 
 
-def resolve_provider_config(message_text: str = "") -> ProviderConfig:
+def resolve_provider_config(message_text: str = "", model_override: str | None = None) -> ProviderConfig:
     provider = select_provider(message_text)
     return ProviderConfig(
         provider=provider,
-        model=select_model(provider, message_text),
+        model=select_model(provider, message_text, model_override=model_override),
         is_high_density=is_high_density_request(message_text),
     )
