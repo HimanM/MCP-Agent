@@ -254,8 +254,9 @@ export function createWsUrl(sessionId: string) {
     BROWSER_BACKEND_URL ||
     (typeof window === "undefined" ? "http://127.0.0.1:8000" : window.location.origin);
   const url = new URL(base);
+  const basePath = url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "");
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = `/ws/cart/${sessionId}`;
+  url.pathname = `${basePath}/ws/cart/${sessionId}`;
   url.search = "";
   url.hash = "";
   return url.toString();
