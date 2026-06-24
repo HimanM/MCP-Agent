@@ -36,6 +36,18 @@ class KaprukaMCPClient:
         self._tools: list[dict] | None = None
         self._tool_lookup: dict[str, str] = {}
 
+    def _invalidate_session(self) -> None:
+        self._session_id = None
+        self._tools = None
+        self._tool_lookup = {}
+
+    def _is_session_error(self, exc: Exception) -> bool:
+        if not isinstance(exc, httpx.HTTPStatusError):
+            return False
+        if exc.response.status_code not in {400, 404}:
+            return False
+        return 'session' in exc.response.text.lower()
+
     async def _send(self, method: str, params: dict | None = None) -> dict:
         payload: dict[str, Any] = {
             'jsonrpc': '2.0',
@@ -91,31 +103,51 @@ class KaprukaMCPClient:
         return self._tool_lookup.get(normalized, name)
 
     async def initialize(self):
+        self._invalidate_session()
         result = await self._send('initialize', {
             'protocolVersion': '2025-03-26',
             'capabilities': {},
             'clientInfo': {'name': 'kapruka-agent', 'version': '1.0.0'},
         })
-        await self._send('notifications/initialized')
         logger.info('MCP session established: %s', self._session_id)
         return result
 
     async def list_tools(self) -> list[dict]:
         if self._tools is None:
-            result = await self._send('tools/list')
-            self._tools = result.get('result', {}).get('tools', [])
-            self._rebuild_tool_lookup()
+            for _ in range(2):
+                try:
+                    if not self._session_id:
+                        await self.initialize()
+                    result = await self._send('tools/list')
+                    self._tools = result.get('result', {}).get('tools', [])
+                    self._rebuild_tool_lookup()
+                    break
+                except Exception as exc:
+                    if not self._is_session_error(exc):
+                        raise
+                    logger.warning('MCP session missing or stale, reinitializing')
+                    self._invalidate_session()
+            else:
+                raise RuntimeError('Unable to establish MCP session')
         return self._tools
 
     async def call_tool(self, name: str, arguments: dict) -> Any:
-        await self.list_tools()
-        actual_name = self.resolve_tool_name(name)
-        result = await self._send('tools/call', {'name': actual_name, 'arguments': {'params': arguments}})
-        content = result.get('result', {}).get('content', [])
-        texts = [part.get('text', '') for part in content if part.get('type') == 'text']
-        if texts:
-            return "\n".join(texts)
-        return result.get('result', {})
+        for _ in range(2):
+            try:
+                await self.list_tools()
+                actual_name = self.resolve_tool_name(name)
+                result = await self._send('tools/call', {'name': actual_name, 'arguments': {'params': arguments}})
+                content = result.get('result', {}).get('content', [])
+                texts = [part.get('text', '') for part in content if part.get('type') == 'text']
+                if texts:
+                    return "\n".join(texts)
+                return result.get('result', {})
+            except Exception as exc:
+                if not self._is_session_error(exc):
+                    raise
+                logger.warning('Retrying MCP tool call after session reset: %s', name)
+                self._invalidate_session()
+        raise RuntimeError(f'Unable to call MCP tool: {name}')
 
     async def close(self):
         await self.http.aclose()

@@ -14,6 +14,8 @@ export interface Message {
 
 const CHAT_CACHE_PREFIX = "kapruka.chat.messages";
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000;
+const RAW_HISTORY_LIMIT = 6;
+const SUMMARY_CHAR_LIMIT = 900;
 
 function chatCacheKey(sessionId: string) {
   return `${CHAT_CACHE_PREFIX}:${sessionId}`;
@@ -64,16 +66,31 @@ function clearCachedMessages(sessionId: string) {
   }
 }
 
+function summarizeHistory(messages: Message[]) {
+  const conversational = messages.filter(
+    (message) => (message.role === "user" || message.role === "assistant") && message.content.trim()
+  );
+  if (conversational.length <= RAW_HISTORY_LIMIT) return "";
+
+  const older = conversational.slice(0, -RAW_HISTORY_LIMIT).slice(-8);
+  const summary = older
+    .map((message) => {
+      const normalized = message.content.replace(/\s+/g, " ").trim().slice(0, 160);
+      return `${message.role}: ${normalized}`;
+    })
+    .join(" | ")
+    .slice(0, SUMMARY_CHAR_LIMIT)
+    .trim();
+
+  return summary ? `Earlier conversation summary: ${summary}` : "";
+}
+
 export function useChat(sessionId: string, modelOverride?: string | null) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => loadCachedMessages(sessionId));
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const idCounter = useRef(0);
   const messagesRef = useRef<Message[]>(messages);
-
-  useEffect(() => {
-    setMessages(loadCachedMessages(sessionId));
-  }, [sessionId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -87,10 +104,12 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
 
       const history = messagesRef.current
         .filter((message) => (message.role === "user" || message.role === "assistant") && message.content.trim())
+        .slice(-RAW_HISTORY_LIMIT)
         .map((message) => ({
           role: message.role,
           content: message.content,
         }));
+      const historySummary = summarizeHistory(messagesRef.current);
 
       const userMsg: Message = {
         id: `user-${++idCounter.current}`,
@@ -108,7 +127,7 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
       const assistantId = `assistant-${++idCounter.current}`;
 
       try {
-        for await (const event of streamChat(text, sessionId, history, modelOverride)) {
+        for await (const event of streamChat(text, sessionId, history, historySummary, modelOverride)) {
           switch (event.type) {
             case "tool_call":
               toolCalls.push({ tool: event.tool!, args: event.args || {} });

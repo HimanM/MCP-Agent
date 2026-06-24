@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi import Query
 
 from agent.provider_selector import resolve_provider_config
+from cart.manager import cart_manager
 from config import settings
 from mcp.client import mcp_client
 
@@ -10,8 +12,10 @@ router = APIRouter(prefix="/api", tags=["meta"])
 
 
 @router.get("/meta")
-async def meta():
+async def meta(session_id: str | None = Query(default=None)):
     provider_config = resolve_provider_config()
+    ctx = await cart_manager.get_context(session_id) if session_id else {}
+    llm_usage = ctx.get("llm_usage", {}) if isinstance(ctx, dict) else {}
     try:
         tools = await mcp_client.list_tools()
         connected = True
@@ -26,6 +30,7 @@ async def meta():
         "openrouter": {
             "default_model": settings.openrouter_fast_model,
             "backup_model": settings.openrouter_backup_model,
+            "usage": llm_usage,
         },
         "tts": {
             "configured": settings.elevenlabs_enabled,

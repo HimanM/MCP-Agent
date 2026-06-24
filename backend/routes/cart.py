@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from cart.manager import cart_manager
 from cart.sync import cart_sync
+from agent.tools import parse_checkout_result
 
 router = APIRouter(prefix="/api/cart", tags=["cart"])
 
@@ -98,6 +99,27 @@ async def update_checkout_info(session_id: str, req: CheckoutInfoRequest):
 
     cart = await cart_manager.update_checkout_info(session_id, **fields)
     return {"cart": cart}
+
+
+@router.post("/{session_id}/checkout")
+async def checkout_cart(session_id: str):
+    from agent.tools import _checkout
+
+    result = await _checkout(session_id)
+    if isinstance(result, str):
+        if result == "Cart is empty. Add items before checking out.":
+            raise HTTPException(status_code=400, detail=result)
+        if result.startswith("MISSING_INFO:"):
+            missing = [field.strip() for field in result.removeprefix("MISSING_INFO:").split(",") if field.strip()]
+            raise HTTPException(status_code=400, detail="Missing checkout information", headers={"X-Checkout-Missing": ",".join(missing)})
+
+    order = parse_checkout_result(str(result))
+    if not order.get("payment_url") and not order.get("order_number"):
+        raise HTTPException(status_code=502, detail="Checkout completed without a usable payment response")
+
+    cart = await cart_manager.get_cart(session_id)
+    total = sum(i["price"] * i["quantity"] for i in cart.get("items", []))
+    return {"order": order, "cart": cart, "total": total}
 
 
 @router.patch("/{session_id}/budget")

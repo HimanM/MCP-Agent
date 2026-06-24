@@ -18,15 +18,15 @@ export const metadata: Metadata = {
   title: "Kapruka AI Shopping Assistant",
   description: "Challenge submission for the Kapruka Agent Challenge: an MCP-powered shopping assistant with chat, cart, checkout, gifting, and order tracking.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <body className={`${displayFont.variable} ${bodyFont.variable} antialiased`}>{children}</body>
     </html>
   );

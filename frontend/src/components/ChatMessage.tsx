@@ -26,7 +26,7 @@ function ToolBadge({ tool, args }: { tool: string; args: Record<string, unknown>
   const icon = tool === "track_order" ? <Truck size={13} /> : <Sparkles size={13} />;
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[rgba(244,223,208,0.65)] px-3 py-1.5 text-xs font-medium text-accent">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-accent">
       {icon}
       {labels[tool] || tool}
     </span>
@@ -56,8 +56,8 @@ function ToolProducts({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-ink">Products found</p>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted">Swipe or use arrows to view more</span>
-          {products.length > 2 ? (
+          <span className="text-[10px] text-muted md:text-[11px]">Swipe or use arrows</span>
+          {products.length > 4 ? (
             <div className="hidden items-center gap-1 md:flex">
               <button
                 type="button"
@@ -81,12 +81,12 @@ function ToolProducts({
       </div>
       <div
         ref={railRef}
-        className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-3"
       >
         {products.map((product) => (
           <div
             key={product.product_id || product.product_url || product.name}
-            className="w-[11.5rem] shrink-0 snap-start sm:w-[13rem] md:w-[15rem] xl:w-[16rem]"
+            className="w-[10.5rem] shrink-0 snap-start sm:w-[10rem] md:w-[11.5rem] xl:w-auto xl:basis-[calc((100%-2.25rem)/4)]"
           >
             <ProductCard product={product} sessionId={sessionId} onAdded={onAdded} />
           </div>
@@ -206,7 +206,8 @@ export default function ChatMessage({
     message.toolResults?.map((entry) => entry.order).find((entry): entry is OrderSummary => Boolean(entry)) || null;
   const canPlayVoice = !isUser && Boolean(message.content?.trim());
   const showLoadingDots = !isUser && isStreaming;
-  const bubbleClass = hasProducts ? "w-full max-w-none" : isUser ? "max-w-[min(92%,48rem)]" : "max-w-[min(96%,64rem)]";
+  const userClass = "ml-auto max-w-[min(78%,38rem)]";
+  const assistantClass = hasProducts ? "w-full max-w-none" : "max-w-[min(100%,70rem)]";
   const speechKey = useMemo(() => `${message.id}:${message.content}`, [message.id, message.content]);
   const speechSummary = useMemo(() => buildSpeechSummary(message.content || "", productResults), [message.content, productResults]);
   const [activeSpeechKey, setActiveSpeechKey] = useState<string | null>(null);
@@ -219,7 +220,7 @@ export default function ChatMessage({
       {isUser ? (
         <div className="flex w-full justify-end">
           <div
-            className={`${bubbleClass} rounded-[1.6rem] rounded-br-md bg-[linear-gradient(180deg,#f3dfcf,#efcfb5)] px-4 py-3 text-sm leading-relaxed text-ink shadow-[0_10px_30px_rgba(37,36,31,0.04)]`}
+            className={`${userClass} rounded-[1.25rem] rounded-br-md border border-border bg-accent-soft px-4 py-2.5 text-sm leading-relaxed text-ink`}
           >
             {message.content ? <MessageBody content={message.content} hasProducts={false} /> : null}
           </div>
@@ -227,14 +228,12 @@ export default function ChatMessage({
       ) : (
         <div className="flex w-full items-start gap-3">
           <div className="hidden pt-1 sm:block">
-            <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(180deg,#fff3ea,#f2dccb)] text-accent">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-surface-2 text-accent">
               <Bot size={16} />
             </div>
           </div>
 
-          <div
-            className={`${bubbleClass} rounded-[1.6rem] rounded-tl-md border border-border bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-[0_10px_30px_rgba(37,36,31,0.04)]`}
-          >
+          <div className={`${assistantClass} min-w-0 text-sm leading-relaxed text-ink`}>
             {message.toolCalls && message.toolCalls.length > 0 ? (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <ToolBadge tool={message.toolCalls[message.toolCalls.length - 1].tool} args={message.toolCalls[message.toolCalls.length - 1].args} />
@@ -262,10 +261,10 @@ export default function ChatMessage({
                       }
                       void playAssistantSpeech(speechSummary || message.content, language, ttsApiEnabled, speechKey);
                     }}
-                    className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium ${
                       isSpeaking
                         ? "border-accent bg-accent text-white"
-                        : "border-border bg-bg text-ink-soft hover:border-border-hover hover:text-ink"
+                        : "border-border bg-surface-2 text-ink-soft hover:border-border-hover hover:text-ink"
                     }`}
                   >
                     {isSpeaking ? <Square size={13} /> : <Play size={13} />}
@@ -278,7 +277,7 @@ export default function ChatMessage({
             {!hasProducts && trackingResult ? <ToolTracking tracking={trackingResult} /> : null}
             {!hasProducts && !trackingResult && orderResult ? <ToolOrder order={orderResult} /> : null}
 
-            {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length ? (
+            {!message.content && message.toolCalls && message.toolCalls.length > 0 && !productResults.length && !showLoadingDots ? (
               <div className="flex items-center gap-1.5 py-1">
                 <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
                 <div className="typing-dot h-2 w-2 rounded-full bg-muted" />

@@ -36,7 +36,8 @@ export function createRecognition(lang = "en-US"): RecognitionLike | null {
   return recognition;
 }
 
-export function recognitionLocaleForLanguage(_language: string) {
+export function recognitionLocaleForLanguage(language: string) {
+  void language;
   // ponytail: English recognition is the most reliable path here and works best for English, Singlish, and Tanglish.
   return "en-US";
 }

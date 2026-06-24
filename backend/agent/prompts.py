@@ -1,8 +1,10 @@
 from pathlib import Path
 
 
-PROMPT_DIR = Path(__file__).resolve().parents[2] / "docs" / "prompts" / "system"
-SINGLISH_MARKERS = ("mage", "wifet", "ahuw", "kiye", "kiyapan", "ekak", "hari", "ane", "aiyo", "raa", "beela")
+PROMPT_ROOT = Path(__file__).resolve().parents[2] / "docs" / "prompts"
+SYSTEM_DIR = PROMPT_ROOT / "system"
+EXAMPLES_DIR = PROMPT_ROOT / "examples"
+SINGLISH_MARKERS = ("mage", "ahuwa", "kiye", "kiyapan", "ekak", "hari", "ane", "aiyo", "beela")
 TANGLISH_MARKERS = ("kitta", "konjam", "irukku", "vandhen", "sollu", "paakalam", "venum", "kulla", "amma", "enna")
 WEAK_PLAN_REFUSAL_MARKERS = (
     "talking is not needed",
@@ -12,15 +14,31 @@ WEAK_PLAN_REFUSAL_MARKERS = (
     "just send flowers",
     "send flowers only",
 )
+EXAMPLE_KEYWORDS = {
+    "clothing": ("office function", "office wear", "wear", "dress", "shirt", "mens wear", "women's wear", "womens wear"),
+    "groceries": ("grocery", "groceries", "restock", "weekly", "milk", "rice", "sugar", "tea"),
+}
 
 
-def _read_prompt_file(filename: str) -> str:
-    return (PROMPT_DIR / filename).read_text(encoding="utf-8").strip()
+def _read_prompt_file(directory: Path, filename: str) -> str:
+    return (directory / filename).read_text(encoding="utf-8").strip()
 
 
-SYSTEM_PROMPT_EN = _read_prompt_file("en.md")
-SYSTEM_PROMPT_SINHALA = _read_prompt_file("si.md")
-SYSTEM_PROMPT_TAMIL = _read_prompt_file("ta.md")
+SYSTEM_PROMPT_EN = "\n\n".join(
+    (
+        _read_prompt_file(SYSTEM_DIR, "core.md"),
+        _read_prompt_file(SYSTEM_DIR, "tool-policy.md"),
+    )
+)
+SYSTEM_PROMPT_SINHALA = _read_prompt_file(SYSTEM_DIR, "si.md")
+SYSTEM_PROMPT_TAMIL = _read_prompt_file(SYSTEM_DIR, "ta.md")
+PROMPT_EXAMPLES = {
+    "singlish": _read_prompt_file(EXAMPLES_DIR, "singlish.md"),
+    "tanglish": _read_prompt_file(EXAMPLES_DIR, "tanglish.md"),
+    "soft-correction": _read_prompt_file(EXAMPLES_DIR, "soft-correction.md"),
+    "clothing": _read_prompt_file(EXAMPLES_DIR, "clothing.md"),
+    "groceries": _read_prompt_file(EXAMPLES_DIR, "groceries.md"),
+}
 
 
 def get_system_prompt(language: str) -> str:
@@ -33,33 +51,71 @@ def detect_input_style(user_text: str) -> str:
     singlish_hits = sum(marker in normalized for marker in SINGLISH_MARKERS)
     tanglish_hits = sum(marker in normalized for marker in TANGLISH_MARKERS)
     if tanglish_hits >= 2 and tanglish_hits > singlish_hits:
-        return "IMPORTANT: user is writing in Tanglish. Reply in mixed Tamil + English Romanized style. Do not reply in plain English."
+        return "tanglish"
     if singlish_hits >= 2:
-        return "IMPORTANT: user is writing in Singlish. Reply in mixed Sinhala + English Romanized style. Do not reply in plain English."
-    return "Default"
+        return "singlish"
+    return "default"
 
 
 def detect_behavior_hint(user_text: str) -> str:
     normalized = user_text.lower()
     if any(marker in normalized for marker in WEAK_PLAN_REFUSAL_MARKERS):
         return (
-            "IMPORTANT: soft correction required. The user is refusing a better action and pushing a weak plan. "
-            "Start your reply by saying clearly but kindly that flowers alone will not fix this and the plan is weak. "
+            "Soft correction required. Say clearly but kindly that the weak move will not solve the problem. "
             "Recommend the better human action first, then help with the best shopping option."
         )
-    return "Default"
+    return ""
 
 
-def apply_behavior_hint_to_system_prompt(system_prompt: str, user_text: str) -> str:
-    hint = detect_behavior_hint(user_text)
-    if hint == "Default":
-        return system_prompt
-    return f"{system_prompt}\n\n## Runtime Behavior Override\n- {hint}"
+def _select_example_keys(user_text: str, style: str, behavior_hint: str) -> list[str]:
+    normalized = user_text.lower()
+    keys: list[str] = []
+    if behavior_hint:
+        keys.append("soft-correction")
+    if style in ("singlish", "tanglish"):
+        keys.append(style)
+    for key, keywords in EXAMPLE_KEYWORDS.items():
+        if any(keyword in normalized for keyword in keywords):
+            keys.append(key)
+            break
+    deduped: list[str] = []
+    for key in keys:
+        if key not in deduped:
+            deduped.append(key)
+    return deduped[:2]
+
+
+def build_system_prompt(language: str, user_text: str) -> str:
+    base_prompt = get_system_prompt(language)
+    if language in {"si", "ta"}:
+        return base_prompt
+
+    style = detect_input_style(user_text)
+    behavior_hint = detect_behavior_hint(user_text)
+    sections = [base_prompt]
+
+    runtime_notes: list[str] = []
+    if style == "singlish":
+        runtime_notes.append("Reply in mixed Sinhala plus English Romanized style, not plain English.")
+    elif style == "tanglish":
+        runtime_notes.append("Reply in mixed Tamil plus English Romanized style, not plain English.")
+    if behavior_hint:
+        runtime_notes.append(behavior_hint)
+    if runtime_notes:
+        sections.append("## Runtime notes\n- " + "\n- ".join(runtime_notes))
+
+    example_keys = _select_example_keys(user_text, style, behavior_hint)
+    if example_keys:
+        sections.append(
+            "## Relevant examples\n" + "\n\n".join(PROMPT_EXAMPLES[key] for key in example_keys)
+        )
+
+    return "\n\n".join(section for section in sections if section.strip())
 
 
 def enforce_behavior_hint_on_response(response_text: str, user_text: str, language: str) -> str:
     hint = detect_behavior_hint(user_text)
-    if hint == "Default":
+    if not hint:
         return response_text
 
     normalized = response_text.lower()
@@ -70,7 +126,7 @@ def enforce_behavior_hint_on_response(response_text: str, user_text: str, langua
     return f"{prefix} {response_text}".strip()
 
 
-def build_user_message(user_text: str, cart_state: dict, context: dict) -> str:
+def build_user_message(user_text: str, cart_state: dict, context: dict, history_summary: str = "") -> str:
     cart_lines = []
     for item in cart_state.get("items", []):
         cart_lines.append(
@@ -98,14 +154,11 @@ def build_user_message(user_text: str, cart_state: dict, context: dict) -> str:
         ctx_parts.append(f"Delivery date: {context['delivery_date']}")
 
     ctx_summary = "\n".join(ctx_parts) if ctx_parts else "  (none)"
+    history_block = history_summary.strip() or "  (none)"
 
-    return f"""<input_style>
-{detect_input_style(user_text)}
-</input_style>
-
-<behavior_hint>
-{detect_behavior_hint(user_text)}
-</behavior_hint>
+    return f"""<conversation_summary>
+{history_block}
+</conversation_summary>
 
 <current_cart>
 {cart_summary}

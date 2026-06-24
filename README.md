@@ -1,63 +1,82 @@
 <p align="center">
-  <img src="./frontend/public/kapruka-logo.svg" alt="Kapruka AI" width="420" />
+  <img src="./frontend/public/kapruka-mark.png" alt="Kapruka AI logo" width="164" />
 </p>
 
-# Kapruka AI Shopping Assistant
+<h1 align="center">Kapruka AI Shopping Assistant</h1>
 
-Challenge submission for the [Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agentChallenge.html).
+<p align="center">
+  Challenge submission for the <a href="https://www.kapruka.com/contactUs/agentChallenge.html">Kapruka Agent Challenge</a>.
+</p>
 
-This project is an MCP-powered shopping assistant for Kapruka that lets users:
+<p align="center">
+  <a href="https://github.com/HimanM">GitHub</a> ·
+  <a href="https://www.linkedin.com/in/HimanM">LinkedIn</a>
+</p>
+
+<p align="center">
+  <img src="./docs/assets/architecture-overview.svg" alt="Kapruka AI architecture overview" width="960" />
+</p>
+
+## What this is
+
+This is an MCP-powered shopping assistant for Kapruka.
+
+> [!WARNING]
+> The current demo uses the free `google/gemma-4-31b-it` route, so responses can feel slow at times. Please do not mind the latency too much during evaluation.
+
+It lets a shopper:
 
 - search products in natural language
-- browse categories and current deals
+- browse categories and deals without leaving the app flow
 - use a guided gift advisor
-- track orders without leaving the app flow
-- add products to cart and manage quantities
-- save checkout details and continue a shopping session
-- use multilingual UI controls and voice-assisted interactions
+- track orders in a dedicated flow
+- add products to cart and save checkout details
+- continue short-lived sessions after refresh
+- use voice input and spoken replies
 
-## Stack
+## Architecture
 
-- Frontend: Next.js, React, Tailwind CSS
-- Backend: FastAPI
-- LLM routing: OpenRouter with provider fallback support in the backend
-- Realtime cart sync: WebSocket support
-- Session/cart storage: Redis-backed cart and context storage
-- MCP integration: Kapruka MCP tools
+- `frontend/`
+  - Next.js app for chat, category browsing, deals, cart, checkout, and voice controls
+- `backend/`
+  - FastAPI API for prompt assembly, provider routing, MCP orchestration, rate limiting, cart/session state, STT, and TTS
+- `docs/`
+  - deployment notes, prompts, and support docs
+
+## Technology choices
+
+| Technology | What it does here | Why it helps |
+| --- | --- | --- |
+| Next.js + React | Main web app UI | Fast iteration, SSR where useful, simple deployment to Vercel |
+| Tailwind CSS | Styling system | Lets us move quickly while keeping the UI consistent |
+| FastAPI | Backend API layer | Clean async routes for chat, cart, STT, TTS, and tracking |
+| Redis | Session and cart state | Keeps short-lived chat context and cart state outside the browser |
+| OpenRouter | LLM gateway | Gives one integration point for Gemma and fallback model control |
+| `google/gemma-4-31b-it` | Main reasoning model | Strong multilingual quality for this use case without jumping to a much more expensive model |
+| Kapruka MCP | Tool layer | Gives structured access to categories, catalog, deals, and tracking |
+| ElevenLabs | Spoken output | Better voice quality than browser-native TTS when configured |
+| Groq or OpenRouter STT | Speech-to-text | Lets the mic flow become normal chat input |
 
 ## Why Gemma 4 31B
 
-I chose `google/gemma-4-31b-it` because it was the best quality-to-cost fit for this challenge use case.
+We chose `google/gemma-4-31b-it` as the main model because it fit this challenge unusually well.
 
-- It is a highly capable open-weight multimodal model from Google DeepMind.
-- It can be deployed through Ollama, but for this project we use OpenRouter because the app is being deployed on Vercel.
-- In our testing it handled English, Singlish, Tanglish, native Sinhala, and Tamil more reliably than several pricier very large scale models.
-- It gave us strong conversational quality without pushing the hosting and usage costs up unnecessarily, which matters for a shopping assistant that may handle many short interactions.
-
-## Voice architecture
-
-- Primary TTS path: backend Azure Speech API for `en`, `si`, and `ta`
-- Fallback TTS path: browser-native `speechSynthesis`
-- Reason for this split: browser voices are too inconsistent across devices to be trusted as the main Sinhala/Tamil voice path, while Azure gives us a real API-backed multilingual route that still stays practical for deployment
-
-## Project structure
-
-```text
-backend/    FastAPI routes, agent logic, cart/session handling, rate limits
-frontend/   Next.js UI, chat experience, category/deals/product flows
-docs/       deployment notes and supporting docs
-```
+- It is a highly capable open-weight model from Google DeepMind.
+- It can be self-hosted elsewhere, but for this challenge we route it through OpenRouter because deployment is web-first and Vercel-friendly.
+- In practice it handled English, Singlish, Tanglish, Sinhala-leaning romanized text, and Tamil-leaning romanized text more naturally than several pricier options we tried.
+- It gave us a good balance of warmth, instruction-following, and cost efficiency for a shopping assistant that expects many short conversations instead of a few giant ones.
+- This demo currently uses the free version, which is slower than paid inference, but it kept the challenge build cost-efficient.
 
 ## Local development
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
 python -m uvicorn main:app --reload --port 8000
 ```
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -65,34 +84,34 @@ npm install
 npm run dev
 ```
 
-### 3. Open the app
+### App URLs
 
 - Frontend: `http://localhost:3000`
 - Backend: `http://127.0.0.1:8000`
 
 ## Environment
 
-Local development reads from the repo root `.env`.
-
-Deployment-oriented example values are in `.env.example`.
-
-## Current product behavior
-
-- Chat session id persists for a short return window
-- Chat history is restored after refresh for that same short session window
-- Cart and checkout state are preserved separately through the backend session store
-- Rate limiting is applied on the backend to protect model usage
+- local development reads from the repo root `.env`
+- deployment-friendly placeholders live in `.env.example`
 
 ## Verification
 
-Useful commands:
-
 ```bash
-cd frontend && npm run build
 cd frontend && npm run lint
+cd frontend && npm run build
 cd backend && python -m pytest
 ```
 
-## Notes
+## Competition scope
 
-This repository has been iterated in multiple feature branches and then merged into `master` as the challenge submission evolved.
+This repository is built for a competition submission, not as a production-complete commerce platform.
+
+If this were going to production, we would still need more work around:
+
+- authentication and user identity
+- stronger abuse protection and budget controls
+- prompt/version management with evaluation loops
+- better observability and conversation tracing
+- durable order-safe persistence beyond short-session convenience storage
+- more rigorous multilingual voice QA
+- analytics, consent, privacy, and compliance reviews

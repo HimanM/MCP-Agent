@@ -28,6 +28,13 @@ export interface BackendMeta {
   openrouter: {
     default_model: string;
     backup_model: string;
+    usage?: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+      cached_tokens: number;
+      reasoning_tokens: number;
+    };
   };
   tts: {
     configured: boolean;
@@ -128,12 +135,19 @@ export async function* streamChat(
   message: string,
   sessionId: string,
   history?: { role: string; content: string }[],
+  historySummary?: string,
   modelOverride?: string | null
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, session_id: sessionId, history, model_override: modelOverride || null }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      history,
+      history_summary: historySummary || "",
+      model_override: modelOverride || null,
+    }),
   });
 
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
@@ -204,6 +218,27 @@ export async function updateCheckoutInfo(sessionId: string, payload: CheckoutInf
   return res.json();
 }
 
+export async function placeOrder(sessionId: string): Promise<{ order: OrderSummary; cart: CartState; total: number }> {
+  const res = await fetch(`${API_URL}/api/cart/${sessionId}/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail || body?.error || "";
+    } catch {
+      // ignore
+    }
+    throw new Error(detail ? `Checkout failed: ${detail}` : `Checkout failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export async function updateBudget(sessionId: string, budget_max: number | null) {
   const res = await fetch(`${API_URL}/api/cart/${sessionId}/budget`, {
     method: "PATCH",
@@ -226,8 +261,9 @@ export function createWsUrl(sessionId: string) {
   return url.toString();
 }
 
-export async function getBackendMeta(): Promise<BackendMeta> {
-  const res = await fetch(`${API_URL}/api/meta`);
+export async function getBackendMeta(sessionId?: string): Promise<BackendMeta> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`${API_URL}/api/meta${query}`);
   return res.json();
 }
 

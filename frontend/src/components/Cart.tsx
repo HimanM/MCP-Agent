@@ -16,6 +16,7 @@ interface CartProps {
   onBudgetDraftChange: (value: string) => void;
   onBudgetSubmit: (event: FormEvent) => void;
   onBudgetClear: () => Promise<void> | void;
+  checkoutLabel?: string;
 }
 
 export default function Cart({
@@ -29,6 +30,7 @@ export default function Cart({
   onBudgetDraftChange,
   onBudgetSubmit,
   onBudgetClear,
+  checkoutLabel = "Proceed to checkout",
 }: CartProps) {
   const hasBudget = cart.budget_max != null && Number.isFinite(cart.budget_max);
   const budgetOver = hasBudget && total > (cart.budget_max as number) ? total - (cart.budget_max as number) : 0;
@@ -37,7 +39,7 @@ export default function Cart({
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-4">
-        <div className="rounded-[1.6rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(249,241,232,0.95))] p-4">
+        <div className="rounded-[1.2rem] border border-border bg-surface p-4">
           <button
             type="button"
             onClick={() => setShowBudget((current) => !current)}
@@ -48,11 +50,11 @@ export default function Cart({
               <p className="mt-1 text-sm text-ink-soft">Set a budget and keep shopping without losing flexibility.</p>
             </div>
             {hasBudget ? (
-              <span className="rounded-full border border-[rgba(101,139,82,0.24)] bg-[rgba(101,139,82,0.12)] px-3 py-1.5 text-xs font-medium text-success">
+              <span className="rounded-full border border-[rgba(101,139,82,0.24)] bg-[rgba(101,139,82,0.12)] px-3 py-1 text-xs font-medium text-success">
                 Saved budget: Rs. {(cart.budget_max as number).toLocaleString()}
               </span>
             ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-white px-3 py-2 text-right text-xs text-ink-soft">
+              <div className="rounded-[0.95rem] border border-dashed border-border bg-surface-2 px-3 py-2 text-right text-xs text-ink-soft">
                 <p className="font-medium text-ink">No budget set</p>
                 <p className="mt-1">{showBudget ? "Hide" : "Show"}</p>
               </div>
@@ -69,13 +71,13 @@ export default function Cart({
                     onChange={(e) => onBudgetDraftChange(e.target.value)}
                     inputMode="numeric"
                     placeholder="Rs. 5,000"
-                    className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
+                    className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent"
                   />
                 </label>
                 <button
                   type="submit"
                   disabled={budgetSaving}
-                  className="inline-flex h-11 items-center gap-2 rounded-2xl bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Wallet size={15} />
                   {budgetSaving ? "Saving..." : "Save budget"}
@@ -85,7 +87,7 @@ export default function Cart({
                     type="button"
                     onClick={onBudgetClear}
                     disabled={budgetSaving}
-                    className="h-11 rounded-2xl border border-border bg-white px-4 text-sm font-medium text-ink-soft hover:border-border-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-11 rounded-full border border-border bg-surface px-4 text-sm font-medium text-ink-soft hover:border-border-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Clear
                   </button>
@@ -93,11 +95,11 @@ export default function Cart({
               </div>
 
               <div className="flex flex-wrap gap-2 text-xs text-ink-soft">
-                <span className="rounded-full border border-border bg-white px-2.5 py-1">Cart total: Rs. {total.toLocaleString()}</span>
+                <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">Cart total: Rs. {total.toLocaleString()}</span>
                 {hasBudget ? (
-                  <span className="rounded-full border border-border bg-white px-2.5 py-1">Budget: Rs. {(cart.budget_max as number).toLocaleString()}</span>
+                  <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">Budget: Rs. {(cart.budget_max as number).toLocaleString()}</span>
                 ) : (
-                  <span className="rounded-full border border-dashed border-border bg-white px-2.5 py-1">Budget is optional</span>
+                  <span className="rounded-full border border-dashed border-border bg-surface-2 px-2.5 py-1">Budget is optional</span>
                 )}
               </div>
 
@@ -124,7 +126,7 @@ export default function Cart({
           {cart.items.map((item) => (
             <div
               key={item.product_id}
-              className="animate-fade-in group flex gap-3 rounded-[1.45rem] border border-border bg-white/90 p-3 transition hover:border-border-hover hover:shadow-[0_14px_28px_rgba(88,54,30,0.05)]"
+              className="animate-fade-in group flex gap-3 rounded-[1.1rem] border border-border bg-surface p-3 transition hover:border-border-hover hover:shadow-[0_14px_28px_rgba(15,15,15,0.035)]"
             >
               {item.image_url ? (
                 <Image
@@ -186,25 +188,25 @@ export default function Cart({
       )}
 
       <div className="mt-auto border-t border-border px-4 py-4">
-        <div className="space-y-3 rounded-[1.6rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(249,241,232,0.95))] p-4">
+        <div className="space-y-3 rounded-[1.2rem] border border-border bg-surface p-4">
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-ink-soft">Total</span>
             <span className="text-lg font-semibold text-ink">Rs. {total.toLocaleString()}</span>
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-ink-soft">
-            <span className="rounded-full border border-border bg-white px-2.5 py-1">
+            <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">
               {cart.items.length} {cart.items.length === 1 ? "item" : "items"}
             </span>
-            {cart.recipient?.name ? <span className="rounded-full border border-border bg-white px-2.5 py-1">For {cart.recipient.name}</span> : null}
-            {cart.delivery?.city ? <span className="rounded-full border border-border bg-white px-2.5 py-1">{cart.delivery.city}</span> : null}
+            {cart.recipient?.name ? <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">For {cart.recipient.name}</span> : null}
+            {cart.delivery?.city ? <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{cart.delivery.city}</span> : null}
           </div>
         </div>
         <button
           type="button"
           onClick={onCheckout}
-          className="mt-4 w-full rounded-[1.15rem] bg-accent py-3 text-sm font-medium text-white hover:bg-accent-hover active:scale-[0.99]"
+          className="mt-3 h-11 w-full rounded-full bg-accent text-sm font-medium text-white hover:bg-accent-hover active:scale-[0.99]"
         >
-          View Cart & Checkout
+          {checkoutLabel}
         </button>
       </div>
     </div>

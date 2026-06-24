@@ -10,6 +10,11 @@ dist/
 /.tmp-playwright
 *.err
 docs/superpowers/
+!docs/superpowers/
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
+!docs/superpowers/plans/
+!docs/superpowers/plans/**
 docs/feature-checklists/
 docs/ui-functionality-brief.md
 kapruka-mcp-analysis.md

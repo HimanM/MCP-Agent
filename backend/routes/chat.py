@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
     history: list[dict] | None = None
+    history_summary: str | None = None
     model_override: str | None = None
 
 
@@ -43,22 +44,9 @@ def _needs_order_number_prompt(message_text: str) -> bool:
     return asks_to_track and not has_order_number
 
 
-def _provider_fallback_order(message_text: str) -> list[str]:
-    preferred = resolve_provider_config(message_text).provider
-    ordered: list[str] = []
-    available = {
-        "openrouter": bool(settings.openrouter_api_key),
-        "groq": bool(settings.groq_api_key),
-        "gemini": bool(settings.gemini_api_key),
-    }
-
-    for provider in (preferred, "openrouter", "gemini", "groq"):
-        if provider == "none":
-            continue
-        if available.get(provider) and provider not in ordered:
-            ordered.append(provider)
-
-    return ordered
+def _provider_fallback_order(message_text: str, model_override: str | None = None) -> list[str]:
+    provider = resolve_provider_config(message_text, model_override=model_override).provider
+    return [provider] if provider != "none" else []
 
 
 def _provider_chat_fn(provider: str):
@@ -107,7 +95,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             yield 'data: [DONE]\n\n'
             return
 
-        candidates = _provider_fallback_order(req.message)
+        candidates = _provider_fallback_order(req.message, model_override=req.model_override)
         if not candidates:
             yield (
                 f"data: {json.dumps({'type': 'error', 'error': 'No LLM provider is configured. Set OPENROUTER_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY in the repo .env file.'})}\n\n"
@@ -133,7 +121,13 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                 produced_output = False
                 first_event = True
 
-                async for event in chat_fn(session_id, req.message, req.history or [], model_override=req.model_override):
+                async for event in chat_fn(
+                    session_id,
+                    req.message,
+                    req.history or [],
+                    history_summary=req.history_summary or "",
+                    model_override=req.model_override,
+                ):
                     is_fallback_error = (
                         first_event
                         and event.get('type') == 'error'
