@@ -1,5 +1,5 @@
 const BROWSER_BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "";
-const CART_WS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CART_WS !== "0";
+const CART_WS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_CART_WS === "1";
 const API_URL = typeof window === "undefined" ? BROWSER_BACKEND_URL : "";
 
 export interface CartItem {

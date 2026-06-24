@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": res.headers.get("content-type") || "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch {

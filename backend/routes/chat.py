@@ -89,6 +89,8 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         )
 
     async def event_stream():
+        # ponytail: send an SSE padding comment first so hosting proxies flush the stream early.
+        yield ":" + (" " * 2048) + "\n\n"
         if _needs_order_number_prompt(req.message):
             yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id, 'provider': 'local', 'model': 'order-tracking-guard'})}\n\n"
             yield f"data: {json.dumps({'type': 'text', 'text': 'Please share your Kapruka order number and I will track the latest status for you.'})}\n\n"
@@ -163,7 +165,15 @@ async def chat_endpoint(req: ChatRequest, request: Request):
 
         yield 'data: [DONE]\n\n'
 
-    return StreamingResponse(event_stream(), media_type='text/event-stream')
+    return StreamingResponse(
+        event_stream(),
+        media_type='text/event-stream',
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get('/track-order/{order_number}')
