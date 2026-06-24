@@ -1543,6 +1543,9 @@ export default function HomePage() {
                         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-soft md:text-[15px] md:leading-7">
                           A premium shopping workspace for gifts, groceries, order tracking, category browsing, and checkout without breaking the flow.
                         </p>
+                        <p className="mt-3 text-xs leading-6 text-muted md:text-[13px]">
+                          Supports English, සිංහල, தமிழ், Singlish, and Tanglish.
+                        </p>
 
                         <div className="mt-5 grid grid-cols-2 gap-2 md:flex md:flex-wrap">
                           {quickActions.map((item) => (
@@ -1736,68 +1739,6 @@ export default function HomePage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {showComposer ? (
-                <div className="pointer-events-none fixed inset-x-3 bottom-3 z-30 sm:inset-x-4 lg:bottom-3 lg:left-[calc(14rem+0.15rem)] lg:right-[calc(20.5rem+0.15rem)]">
-                  <div className="flex w-full flex-col gap-3">
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        submitCurrentMessage();
-                      }}
-                      className="pointer-events-auto flex items-end gap-1.5 rounded-[1.1rem] border border-border bg-surface px-2.5 py-2 shadow-[0_10px_24px_rgba(15,15,15,0.16)] md:gap-2 md:rounded-[1.2rem] md:border md:border-border/80 md:bg-surface md:px-3 md:py-2.5 md:shadow-none"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => activateView("gift")}
-                        className="hidden h-9 shrink-0 items-center gap-2 rounded-full border border-border bg-surface-2 px-3 text-[13px] font-medium text-ink-soft hover:text-ink md:inline-flex"
-                      >
-                        <Gift size={16} />
-                        <span>{uiCopy.giftAdvisor}</span>
-                      </button>
-                      <textarea
-                        ref={composerTextareaRef}
-                        value={input}
-                        rows={1}
-                        onChange={(event) => {
-                          setInput(event.target.value);
-                          resizeComposer();
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            submitCurrentMessage();
-                          }
-                        }}
-                        placeholder={uiCopy.inputPlaceholder}
-                        disabled={isStreaming}
-                        className="composer-textarea min-h-[2.25rem] max-h-16 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-[14px] leading-5 text-ink outline-none placeholder:text-muted disabled:opacity-40 md:text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={toggleListening}
-                        disabled={isStreaming || !voiceInputSupported}
-                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border md:h-10 md:w-10 ${
-                          micActive
-                            ? "border-accent bg-accent text-white"
-                            : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
-                        } disabled:cursor-not-allowed disabled:opacity-40`}
-                        aria-label={micActive ? "Stop voice input" : "Start voice input"}
-                        title={voiceInputSupported ? (micActive ? "Stop voice input" : "Start voice input") : "Voice input not supported in this browser"}
-                      >
-                        <Mic size={18} />
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isStreaming}
-                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-10 md:w-10"
-                        aria-label="Send message"
-                      >
-                        <SendHorizontal size={18} />
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ) : null}
             </main>
             </div>
           </div>
@@ -2027,6 +1968,68 @@ export default function HomePage() {
           trackOrderLabel={uiCopy.trackOrder}
           browseCategoriesLabel={uiCopy.browseCategories}
         />
+      ) : null}
+      {showComposer ? (
+        <div className="pointer-events-none fixed inset-x-3 bottom-3 z-30 sm:inset-x-4 lg:bottom-6 lg:left-[calc(14rem+2.5rem)] lg:right-[calc(20.5rem+3rem)]">
+          <div className="flex w-full flex-col gap-3">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                submitCurrentMessage();
+              }}
+              className="pointer-events-auto flex items-end gap-1.5 rounded-[1.1rem] border border-border bg-surface px-2.5 py-2 shadow-[0_10px_24px_rgba(15,15,15,0.16)] md:gap-2 md:rounded-[1.2rem] md:border md:border-border/80 md:bg-surface md:px-3 md:py-2.5 md:shadow-none"
+            >
+              <button
+                type="button"
+                onClick={() => activateView("gift")}
+                className="hidden h-9 shrink-0 items-center gap-2 rounded-full border border-border bg-surface-2 px-3 text-[13px] font-medium text-ink-soft hover:text-ink md:inline-flex"
+              >
+                <Gift size={16} />
+                <span>{uiCopy.giftAdvisor}</span>
+              </button>
+              <textarea
+                ref={composerTextareaRef}
+                value={input}
+                rows={1}
+                onChange={(event) => {
+                  setInput(event.target.value);
+                  resizeComposer();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    submitCurrentMessage();
+                  }
+                }}
+                placeholder={uiCopy.inputPlaceholder}
+                disabled={isStreaming}
+                className="composer-textarea min-h-[2.25rem] max-h-16 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-[14px] leading-5 text-ink outline-none placeholder:text-muted disabled:opacity-40 md:text-sm"
+              />
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={isStreaming || !voiceInputSupported}
+                className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border md:h-10 md:w-10 ${
+                  micActive
+                    ? "border-accent bg-accent text-white"
+                    : "border-border bg-surface text-ink-soft hover:border-border-hover hover:text-ink"
+                } disabled:cursor-not-allowed disabled:opacity-40`}
+                aria-label={micActive ? "Stop voice input" : "Start voice input"}
+                title={voiceInputSupported ? (micActive ? "Stop voice input" : "Start voice input") : "Voice input not supported in this browser"}
+              >
+                <Mic size={18} />
+              </button>
+              <button
+                type="submit"
+                disabled={isStreaming}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-white shadow-[0_12px_24px_rgba(200,105,58,0.25)] hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 md:h-10 md:w-10"
+                aria-label="Send message"
+              >
+                <SendHorizontal size={18} />
+              </button>
+            </form>
+          </div>
+        </div>
       ) : null}
     </div>
   );
