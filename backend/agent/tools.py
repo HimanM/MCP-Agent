@@ -28,6 +28,11 @@ def _is_nullish(value: Any) -> bool:
     return value is None or (isinstance(value, str) and value.strip().lower() in _NULL_STRINGS)
 
 
+def _looks_like_tool_error(raw: str) -> bool:
+    lowered = (raw or "").strip().lower()
+    return lowered.startswith("error executing ") or "client error '" in lowered or "missing session id" in lowered
+
+
 def _coerce_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -182,6 +187,9 @@ def parse_product_markdown(text: str) -> dict:
     raw = text or ""
     result = {"name": "", "product_id": "", "price": 0, "image_url": "", "product_url": "", "raw": raw}
 
+    if _looks_like_tool_error(raw):
+        return result
+
     if raw.lstrip().startswith("{"):
         try:
             data = json.loads(raw)
@@ -227,6 +235,9 @@ def parse_product_markdown(text: str) -> dict:
 def parse_search_products_markdown(text: str, limit: int = 6) -> list[dict]:
     """Parse Kapruka search results into a concise list of structured product dicts."""
     raw = text or ""
+
+    if _looks_like_tool_error(raw):
+        return []
 
     if raw.lstrip().startswith("["):
         try:
@@ -386,6 +397,18 @@ def parse_tracking_result(text: str) -> dict:
 
 
 def parse_checkout_result(text: str) -> dict:
+    def normalize_order_number(value: Any) -> str:
+        text_value = str(value or "").strip()
+        if not text_value:
+            return ""
+        if " " in text_value:
+            return ""
+        if not re.search(r"\d", text_value):
+            return ""
+        if not re.fullmatch(r"[A-Za-z0-9-]+", text_value):
+            return ""
+        return text_value
+
     raw = text or ""
     result = {
         "payment_url": "",
@@ -427,14 +450,14 @@ def parse_checkout_result(text: str) -> dict:
             or order.get("url")
             or ""
         ).strip()
-        result["order_number"] = str(
+        result["order_number"] = normalize_order_number(
             order.get("order_number")
             or order.get("orderNumber")
             or order.get("order_id")
             or order.get("orderId")
             or order.get("id")
             or ""
-        ).strip()
+        )
         result["expires_at"] = str(
             order.get("expires_at")
             or order.get("expiresAt")
@@ -461,7 +484,7 @@ def parse_checkout_result(text: str) -> dict:
         result["payment_url"] = _first_url(raw)
         order_match = re.search(r"(?:order(?:\s+number)?|order_id|order id)\D{0,8}([A-Z0-9-]{4,})", raw, re.IGNORECASE)
         if order_match:
-            result["order_number"] = order_match.group(1).strip()
+            result["order_number"] = normalize_order_number(order_match.group(1))
 
     return result
 

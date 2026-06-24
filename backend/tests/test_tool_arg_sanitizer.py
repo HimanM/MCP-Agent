@@ -107,6 +107,13 @@ class ToolArgSanitizerTest(unittest.TestCase):
         self.assertIn('"name": "Cake"', content)
         self.assertNotIn("ignore-me", content)
 
+    def test_ignores_tool_error_when_parsing_products(self):
+        error_text = "Error executing search_products: Client error '400 Bad Request' for url 'https://mcp.kapruka.com/mcp'"
+
+        self.assertEqual(parse_search_products_markdown(error_text), [])
+        event = build_tool_result_event("search_products", error_text)
+        self.assertNotIn("products", event)
+
     def test_parses_bracketed_failed_generation(self):
         failed_generation = (
             '<function=search_products[]{"q": "gifts for mom", '
@@ -192,6 +199,11 @@ class ToolArgSanitizerTest(unittest.TestCase):
     def test_checkout_missing_info_stays_plain_text(self):
         event = build_tool_result_event("checkout", "MISSING_INFO: recipient phone, delivery date")
         self.assertNotIn("order", event)
+
+    def test_checkout_ignores_word_fragment_as_order_number(self):
+        parsed = parse_checkout_result("Order created successfully. Complete payment at https://pay.example.com/x")
+        self.assertEqual(parsed["payment_url"], "https://pay.example.com/x")
+        self.assertEqual(parsed["order_number"], "")
 
 
 if __name__ == "__main__":

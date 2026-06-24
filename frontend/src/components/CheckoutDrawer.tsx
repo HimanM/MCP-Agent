@@ -46,7 +46,7 @@ function DrawerSection({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3 rounded-[1.7rem] border border-border bg-white p-4 shadow-[0_10px_30px_rgba(37,36,31,0.03)]">
+    <section className="space-y-3 rounded-[1.1rem] border border-border bg-surface p-4 shadow-[0_10px_30px_rgba(15,15,15,0.03)]">
       <div className="flex items-start gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-full bg-surface-2 text-accent">{icon}</div>
         <div>
@@ -100,7 +100,7 @@ export default function CheckoutDrawer({
 
   return (
     <form
-      className={`fixed inset-y-0 right-0 z-[60] flex w-full max-w-xl flex-col border-l border-border bg-bg shadow-[0_24px_80px_rgba(37,36,31,0.18)] transition-transform duration-300 ease-out ${
+      className={`fixed inset-y-0 right-0 z-[60] flex w-full max-w-xl flex-col border-l border-border bg-bg shadow-[0_24px_80px_rgba(15,15,15,0.18)] transition-transform duration-300 ease-out ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
       aria-hidden={!open}
@@ -126,7 +126,7 @@ export default function CheckoutDrawer({
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <div className="space-y-4">
-          <div className="rounded-[1.8rem] border border-border bg-gradient-to-br from-surface to-surface-2 p-4">
+          <div className="rounded-[1.2rem] border border-border bg-surface p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-muted">Order summary</p>
@@ -135,7 +135,7 @@ export default function CheckoutDrawer({
                 </h3>
                 <p className="mt-1 text-sm text-ink-soft">Saved details will be attached to this cart session.</p>
               </div>
-              <div className="rounded-2xl bg-bg px-3 py-2 text-right shadow-sm">
+              <div className="rounded-[1rem] bg-surface-2 px-3 py-2 text-right shadow-sm">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Total</p>
                 <p className="text-lg font-semibold text-ink">Rs. {total.toLocaleString()}</p>
               </div>
@@ -153,7 +153,7 @@ export default function CheckoutDrawer({
                 <input
                   value={form.recipient.name}
                   onChange={(e) => setRecipient("name", e.target.value)}
-                  className="h-11 w-full rounded-xl border border-border bg-bg px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                  className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                   placeholder="Recipient name"
                   autoComplete="name"
                 />
@@ -163,7 +163,7 @@ export default function CheckoutDrawer({
                 <input
                   value={form.recipient.phone}
                   onChange={(e) => setRecipient("phone", e.target.value)}
-                  className="h-11 w-full rounded-xl border border-border bg-bg px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                  className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                   placeholder="07x xxx xxxx"
                   autoComplete="tel"
                 />
@@ -178,7 +178,7 @@ export default function CheckoutDrawer({
                 <textarea
                   value={form.delivery.address}
                   onChange={(e) => setDelivery("address", e.target.value)}
-                  className="min-h-24 w-full rounded-xl border border-border bg-bg px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                  className="min-h-24 w-full rounded-[1rem] border border-border bg-surface-2 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                   placeholder="House, street, landmark, apartment, etc."
                   rows={4}
                 />
@@ -189,7 +189,7 @@ export default function CheckoutDrawer({
                   <input
                     value={form.delivery.city}
                     onChange={(e) => setDelivery("city", e.target.value)}
-                    className="h-11 w-full rounded-xl border border-border bg-bg px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                    className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                     placeholder="Colombo"
                     autoComplete="address-level2"
                   />
@@ -200,7 +200,7 @@ export default function CheckoutDrawer({
                     type="date"
                     value={form.delivery.date}
                     onChange={(e) => setDelivery("date", e.target.value)}
-                    className="h-11 w-full rounded-xl border border-border bg-bg px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                    className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                     autoComplete="off"
                   />
                 </div>
@@ -214,7 +214,7 @@ export default function CheckoutDrawer({
               <input
                 value={form.sender.name}
                 onChange={(e) => setForm((current) => ({ ...current, sender: { name: e.target.value } }))}
-                className="h-11 w-full rounded-xl border border-border bg-bg px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+                className="h-11 w-full rounded-[1rem] border border-border bg-surface-2 px-4 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
                 placeholder="Your name"
                 autoComplete="name"
               />
@@ -225,7 +225,7 @@ export default function CheckoutDrawer({
             <textarea
               value={form.gift_message}
               onChange={(e) => setForm((current) => ({ ...current, gift_message: e.target.value }))}
-              className="min-h-28 w-full rounded-xl border border-border bg-bg px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(37,36,31,0.08)]"
+              className="min-h-28 w-full rounded-[1rem] border border-border bg-surface-2 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-ink focus:bg-surface focus:shadow-[0_0_0_3px_rgba(15,15,15,0.08)]"
               placeholder="Write a warm note..."
               rows={5}
             />
@@ -242,14 +242,14 @@ export default function CheckoutDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="h-12 flex-1 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-ink transition hover:border-border-hover hover:bg-surface-2"
+            className="h-11 flex-1 rounded-full border border-border bg-surface px-4 text-sm font-medium text-ink transition hover:border-border-hover hover:bg-surface-2"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="h-12 flex-1 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-11 flex-1 rounded-full bg-accent px-4 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Save details"}
           </button>

@@ -76,15 +76,15 @@ export default function GiftAdvisor({
       aria-label="Gift advisor"
       className={
         mode === "modal"
-          ? "fixed inset-x-0 bottom-0 z-[80] mx-auto w-full max-w-2xl rounded-t-[2rem] border border-border bg-bg shadow-[0_-24px_80px_rgba(37,36,31,0.18)] md:bottom-8 md:rounded-[2rem]"
-          : "mx-auto w-full max-w-5xl p-1 md:rounded-[2rem] md:border md:border-border md:bg-white/90 md:p-8 md:shadow-[0_18px_48px_rgba(37,36,31,0.05)]"
+          ? "fixed inset-x-0 bottom-0 z-[80] mx-auto w-full max-w-2xl rounded-t-[1.5rem] border border-border bg-bg shadow-[0_-24px_80px_rgba(15,15,15,0.18)] md:bottom-8 md:rounded-[1.5rem]"
+          : "mx-auto w-full max-w-5xl rounded-[1.2rem] border border-border bg-surface px-4 py-4 shadow-[0_16px_40px_rgba(15,15,15,0.03)] md:rounded-[1.5rem] md:p-6 md:shadow-[0_18px_48px_rgba(15,15,15,0.04)]"
       }
     >
       <div className="flex items-start justify-between gap-4 px-0 pb-4 md:border-b md:border-border md:px-0 md:pb-5">
         <div>
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Gift advisor</p>
-          <h2 className="mt-1 mimo-serif text-[1.95rem] leading-[1.02] text-ink md:text-5xl">Find a stronger gift match</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-soft md:text-base md:leading-relaxed">
+          <h2 className="mt-1 mimo-serif text-[1.75rem] leading-[1.02] text-ink md:text-[3.15rem]">Find a stronger gift match</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-soft md:text-[15px] md:leading-relaxed">
             A short guided flow that turns your answers into a better shopping prompt for the assistant.
           </p>
         </div>
@@ -110,7 +110,7 @@ export default function GiftAdvisor({
           ))}
         </div>
 
-        <div className="p-0 md:rounded-[1.5rem] md:border md:border-border md:bg-surface md:p-5">
+        <div className="rounded-[1rem] bg-surface md:rounded-[1.2rem] md:border md:border-border md:bg-surface-2 md:p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-muted">
             Step {stepIndex + 1} of {giftAdvisorSteps.length}
           </p>
@@ -123,10 +123,10 @@ export default function GiftAdvisor({
                 key={choice.label}
                 type="button"
                 onClick={() => pickChoice(choice)}
-                className="group rounded-[1rem] border border-border bg-bg px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-border-hover hover:bg-surface-2 md:rounded-[1.25rem] md:px-4 md:py-4"
+                className="group rounded-[0.9rem] border border-border bg-surface-2 px-3 py-3 text-left transition hover:border-border-hover hover:bg-bg md:rounded-[1rem] md:bg-surface md:px-4 md:py-4"
               >
                 <div>
-                  <p className="text-sm font-semibold text-ink">{choice.label}</p>
+                  <p className="text-[13px] font-semibold text-ink md:text-sm">{choice.label}</p>
                   <p className="mt-1 text-xs leading-relaxed text-ink-soft">{choice.value}</p>
                 </div>
               </button>

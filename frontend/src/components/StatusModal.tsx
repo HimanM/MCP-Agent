@@ -75,7 +75,7 @@ export default function StatusModal({
     <>
       <button
         type="button"
-        className="fixed inset-0 z-[90] bg-[rgba(37,24,18,0.24)] backdrop-blur-[3px]"
+        className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm"
         aria-label="Close status panel"
         onClick={onClose}
       />
@@ -83,7 +83,7 @@ export default function StatusModal({
         role="dialog"
         aria-modal="true"
         aria-label="Developer status"
-        className="animate-pop-in fixed left-1/2 top-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,239,231,0.98))] p-5 shadow-[0_28px_90px_rgba(65,38,19,0.18)]"
+        className="animate-pop-in fixed left-1/2 top-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-border bg-[color:var(--color-surface)] p-5 shadow-[0_28px_90px_rgba(15,15,15,0.24)]"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
@@ -103,6 +103,11 @@ export default function StatusModal({
         <div className="space-y-3">
           <StatusRow icon={<Bot size={16} />} label="Provider" value={backendMeta?.provider || "Unavailable"} />
           <StatusRow icon={<Cpu size={16} />} label="Model" value={effectiveModel} />
+          <StatusRow
+            icon={<Activity size={16} />}
+            label="Cached prompt tokens"
+            value={String(backendMeta?.openrouter.usage?.cached_tokens ?? 0)}
+          />
           <div className="rounded-2xl border border-border bg-surface px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -120,7 +125,7 @@ export default function StatusModal({
                 className={`rounded-full px-4 py-2 text-xs font-semibold ${
                   backupModelEnabled
                     ? "bg-accent text-white"
-                    : "border border-border bg-white text-ink-soft"
+                    : "border border-border bg-surface-2 text-ink-soft"
                 } ${backupAvailable ? "" : "cursor-not-allowed opacity-50"}`}
               >
                 {backupModelEnabled ? "Backup on" : "Backup off"}

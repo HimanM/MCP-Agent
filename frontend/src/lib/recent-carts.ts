@@ -2,13 +2,15 @@ import type { CartState, ProductSummary } from "@/lib/api";
 
 const RECENT_CARTS_KEY = "kapruka.recent.carts";
 const RECENT_CART_LIMIT = 3;
+const RECENT_CART_TTL_MS = 6 * 60 * 60 * 1000;
+const RECENT_CARTS_EVENT = "kapruka:recent-carts";
 
 export type RecentCartSnapshot = {
   sessionId: string;
   savedAt: number;
   itemCount: number;
   total: number;
-  items: ProductSummary[];
+  items: Array<ProductSummary & { quantity?: number }>;
 };
 
 export function loadRecentCartSnapshots(): RecentCartSnapshot[] {
@@ -17,10 +19,30 @@ export function loadRecentCartSnapshots(): RecentCartSnapshot[] {
     const raw = window.localStorage.getItem(RECENT_CARTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as RecentCartSnapshot[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    const fresh = (parsed as RecentCartSnapshot[])
+      .filter((entry) => entry?.savedAt && Date.now() - entry.savedAt < RECENT_CART_TTL_MS)
+      .slice(0, RECENT_CART_LIMIT);
+    if (fresh.length !== parsed.length) {
+      window.localStorage.setItem(RECENT_CARTS_KEY, JSON.stringify(fresh));
+    }
+    return fresh;
   } catch {
     return [];
   }
+}
+
+export function subscribeRecentCartSnapshots(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const notify = () => onStoreChange();
+  window.addEventListener("storage", notify);
+  window.addEventListener(RECENT_CARTS_EVENT, notify);
+
+  return () => {
+    window.removeEventListener("storage", notify);
+    window.removeEventListener(RECENT_CARTS_EVENT, notify);
+  };
 }
 
 export function saveRecentCartSnapshot(cart: CartState) {
@@ -36,12 +58,14 @@ export function saveRecentCartSnapshot(cart: CartState) {
       name: item.name,
       price: item.price,
       image_url: item.image_url,
+      quantity: item.quantity,
     })),
   };
 
   try {
     const existing = loadRecentCartSnapshots().filter((entry) => entry.sessionId !== cart.session_id);
     window.localStorage.setItem(RECENT_CARTS_KEY, JSON.stringify([snapshot, ...existing].slice(0, RECENT_CART_LIMIT)));
+    window.dispatchEvent(new Event(RECENT_CARTS_EVENT));
   } catch {
     // ignore
   }

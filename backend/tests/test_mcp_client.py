@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock
+import httpx
 
 from mcp.client import KaprukaMCPClient
 
@@ -33,6 +34,44 @@ class MCPClientTest(unittest.TestCase):
         args = call.args
         self.assertEqual(args[0], 'tools/call')
         self.assertEqual(args[1]['arguments'], {'params': {'q': 'cake', 'limit': 5}})
+
+    def test_list_tools_initializes_session_when_missing(self):
+        client = KaprukaMCPClient()
+
+        async def initialize():
+            client._session_id = "sess-1"
+            return {"result": {}}
+
+        client.initialize = AsyncMock(side_effect=initialize)
+        client._send = AsyncMock(return_value={'result': {'tools': [{'name': 'kapruka_search_products'}]}})
+
+        import asyncio
+        tools = asyncio.run(client.list_tools())
+
+        client.initialize.assert_awaited_once()
+        self.assertEqual(tools[0]["name"], "kapruka_search_products")
+
+    def test_list_tools_reinitializes_after_session_error(self):
+        client = KaprukaMCPClient()
+        client._session_id = "expired"
+
+        async def initialize():
+            client._session_id = "fresh"
+            return {"result": {}}
+
+        request = httpx.Request("POST", "https://mcp.kapruka.com/mcp")
+        response = httpx.Response(400, request=request, content=b'{"error":"Missing session ID"}')
+        session_error = httpx.HTTPStatusError("bad session", request=request, response=response)
+
+        client.initialize = AsyncMock(side_effect=initialize)
+        client._send = AsyncMock(side_effect=[session_error, {'result': {'tools': [{'name': 'kapruka_search_products'}]}}])
+
+        import asyncio
+        tools = asyncio.run(client.list_tools())
+
+        client.initialize.assert_awaited_once()
+        self.assertEqual(client._session_id, "fresh")
+        self.assertEqual(tools[0]["name"], "kapruka_search_products")
 
 
 if __name__ == '__main__':

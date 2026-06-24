@@ -167,6 +167,7 @@ class CartManager:
             "delivery_city": "",
             "delivery_date": "",
             "recipient_name": "",
+            "llm_usage": {},
         }
         r = await self._get_redis()
         if r is None:
@@ -196,6 +197,11 @@ class CartManager:
             self._redis_unavailable = True
             self.redis = None
             self._memory_ctx[session_id] = ctx
+
+    async def save_llm_usage(self, session_id: str, usage: dict):
+        ctx = await self.get_context(session_id)
+        ctx["llm_usage"] = usage
+        await self.save_context(session_id, ctx)
 
     async def get_full_state(self, session_id: str) -> dict:
         cart = await self.get_cart(session_id)

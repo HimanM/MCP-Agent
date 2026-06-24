@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 from groq import AsyncGroq
 
 from agent.language import detect_language
-from agent.prompts import apply_behavior_hint_to_system_prompt, get_system_prompt, build_user_message
+from agent.prompts import build_system_prompt, build_user_message
 from agent.provider_selector import select_model
 from agent.tools import TOOLS_DEFINITION, build_tool_result_event, coerce_tool_args, execute_tool, format_tool_result_for_model, parse_failed_tool_generation
 from cart.manager import cart_manager
@@ -142,10 +142,11 @@ async def chat(
     session_id: str,
     user_text: str,
     history: list[dict] | None = None,
+    history_summary: str = "",
     model_override: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     lang = detect_language(user_text)
-    system_prompt = apply_behavior_hint_to_system_prompt(get_system_prompt(lang), user_text)
+    system_prompt = build_system_prompt(lang, user_text)
 
     cart_state = await cart_manager.get_cart(session_id)
     ctx = await cart_manager.get_context(session_id)
@@ -154,7 +155,7 @@ async def chat(
     if ctx.get("budget_max") is not None and ctx.get("budget_max") != cart_state.get("budget_max"):
         await cart_manager.update_budget(session_id, ctx["budget_max"])
 
-    user_message = build_user_message(user_text, cart_state, ctx)
+    user_message = build_user_message(user_text, cart_state, ctx, history_summary=history_summary)
 
     messages = [{"role": "system", "content": system_prompt}]
 
