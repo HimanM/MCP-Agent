@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, Minus, Plus, ShoppingBag, Star } from "lucide-react";
+import { ExternalLink, Minus, Plus, ShoppingBag } from "lucide-react";
 import { addToCart, type ProductSummary } from "@/lib/api";
 
 interface ProductCardProps {
@@ -104,11 +104,6 @@ export default function ProductCard({ product, sessionId, onAdded }: ProductCard
             <h3 className="line-clamp-2 min-h-[2.5rem] text-[13px] font-medium leading-snug text-ink md:min-h-0 md:text-[14px]">{product.name}</h3>
           )}
           <p className="mt-1 text-base font-semibold leading-none text-ink md:text-sm">LKR {product.price.toLocaleString()}</p>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-[#b67a2f] md:text-[11px]">
-            <Star size={11} className="fill-current" />
-            <span>4.8</span>
-            <span className="hidden text-muted md:inline">(124)</span>
-          </div>
         </div>
 
         <div className="mt-auto space-y-2 border-t border-border/70 pt-2">
