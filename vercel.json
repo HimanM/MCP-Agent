@@ -11,8 +11,7 @@
       "routePrefix": "/backend",
       "framework": "fastapi",
       "includeFiles": [
-        "../docs/prompts/**/*",
-        "docs/prompts/**/*"
+        "backend/prompts/**/*"
       ]
     }
   }

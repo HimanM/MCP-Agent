@@ -1,9 +1,7 @@
 from pathlib import Path
 
 
-PROMPT_ROOT = Path(__file__).resolve().parents[2] / "docs" / "prompts"
-if not PROMPT_ROOT.exists():
-    PROMPT_ROOT = Path(__file__).resolve().parents[1] / "docs" / "prompts"
+PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 SYSTEM_DIR = PROMPT_ROOT / "system"
 EXAMPLES_DIR = PROMPT_ROOT / "examples"
 SINGLISH_MARKERS = ("mage", "ahuwa", "kiye", "kiyapan", "ekak", "hari", "ane", "aiyo", "beela")
