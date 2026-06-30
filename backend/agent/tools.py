@@ -303,6 +303,8 @@ def parse_tracking_result(text: str) -> dict:
         "recipient": "",
         "estimated_delivery": "",
         "location": "",
+        "total": None,
+        "currency": "LKR",
         "items": [],
         "events": [],
         "raw": raw,
@@ -329,9 +331,19 @@ def parse_tracking_result(text: str) -> dict:
         if delivery_match:
             result["estimated_delivery"] = delivery_match.group(1).strip()
 
-        item_match = re.search(r"\|\s*Total\s*\|\s*([^|]+?)\s*\|", raw, re.IGNORECASE)
-        if item_match:
-            result["items"].append({"name": f"Order total {item_match.group(1).strip()}", "quantity": None})
+        total_match = re.search(r"\|\s*Total\s*\|\s*([^|]+?)\s*\|", raw, re.IGNORECASE)
+        if total_match:
+            total_text = total_match.group(1).strip()
+            value_match = re.search(r"'value'\s*:\s*'?(?P<value>[\d,]+)'?", total_text)
+            currency_match = re.search(r"'currency'\s*:\s*'?(?P<currency>[A-Z]{3})'?", total_text)
+            if value_match:
+                result["total"] = int(value_match.group("value").replace(",", ""))
+            else:
+                fallback_amount = re.search(r"(?:LKR|Rs\.?)\s*([\d,]+)", total_text, re.IGNORECASE)
+                if fallback_amount:
+                    result["total"] = int(fallback_amount.group(1).replace(",", ""))
+            if currency_match:
+                result["currency"] = currency_match.group("currency").strip()
 
         for progress in re.finditer(r"^\s*-\s*([A-Z][^\n—]+?)\s+—\s+([^\n]+)$", raw, re.MULTILINE):
             result["events"].append(
@@ -364,6 +376,22 @@ def parse_tracking_result(text: str) -> dict:
         data.get("estimated_delivery") or data.get("delivery_date") or data.get("estimatedDelivery") or ""
     ).strip()
     result["location"] = str(data.get("current_location") or data.get("location") or "").strip()
+    total_raw = data.get("total") or data.get("order_total") or data.get("amount")
+
+    if isinstance(total_raw, dict):
+        amount = total_raw.get("amount") or total_raw.get("value") or total_raw.get("price")
+        if amount not in (None, ""):
+            try:
+                result["total"] = _coerce_int(amount)
+            except (TypeError, ValueError):
+                result["total"] = None
+        result["currency"] = str(total_raw.get("currency") or data.get("currency") or "LKR").strip() or "LKR"
+    elif total_raw not in (None, ""):
+        try:
+            result["total"] = _coerce_int(total_raw)
+        except (TypeError, ValueError):
+            result["total"] = None
+        result["currency"] = str(data.get("currency") or "LKR").strip() or "LKR"
 
     items = data.get("items") or data.get("products") or data.get("cart") or []
     if isinstance(items, list):

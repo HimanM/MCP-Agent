@@ -16,6 +16,7 @@ function statusTone(status: string) {
 export default function TrackingCard({ tracking }: { tracking: TrackingSummary }) {
   const hasEvents = tracking.events.length > 0;
   const hasItems = tracking.items.length > 0;
+  const hasTotal = typeof tracking.total === "number" && Number.isFinite(tracking.total);
   const headline = getTrackingHeadline(tracking);
   const support = getTrackingSupportGuidance(tracking);
 
@@ -102,20 +103,32 @@ export default function TrackingCard({ tracking }: { tracking: TrackingSummary }
           )}
         </div>
 
-        <div className="rounded-[1rem] border border-border bg-surface-2 px-4 py-4">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Items</p>
+        <div className="space-y-4">
           {hasItems ? (
-            <ul className="mt-4 space-y-3">
-              {tracking.items.map((item, index) => (
-                <li key={`${item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
-                  <span className="min-w-0 flex-1 text-ink">{item.name}</span>
-                  {item.quantity ? <span className="shrink-0 text-ink-soft">x{item.quantity}</span> : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-4 text-sm text-ink-soft">Item details were not included in the tracking response.</p>
-          )}
+            <div className="rounded-[1rem] border border-border bg-surface-2 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Items</p>
+              <ul className="mt-4 space-y-3">
+                {tracking.items.map((item, index) => (
+                  <li key={`${item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="min-w-0 flex-1 text-ink">{item.name}</span>
+                    {item.quantity ? <span className="shrink-0 text-ink-soft">x{item.quantity}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {hasTotal ? (
+            <div className="rounded-[1rem] border border-border bg-surface-2 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Order total</p>
+              <p className="mt-2 text-xl font-semibold tracking-tight text-ink">
+                {(tracking.currency || "LKR")} {tracking.total?.toLocaleString()}
+              </p>
+              <p className="mt-2 text-sm text-ink-soft">
+                {hasItems ? "Shown from the tracking response." : "Item-level details were not included in the tracking response."}
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

@@ -79,6 +79,8 @@ export interface TrackingSummary {
   recipient: string;
   estimated_delivery: string;
   location: string;
+  total?: number | null;
+  currency?: string;
   items: TrackingItem[];
   events: TrackingEvent[];
   raw?: string;

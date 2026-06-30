@@ -176,6 +176,9 @@ class ToolArgSanitizerTest(unittest.TestCase):
         self.assertEqual(parsed["status"], "Delivered")
         self.assertEqual(parsed["recipient"], "KALPANA NAYANAMADHU")
         self.assertEqual(parsed["estimated_delivery"], "1 / MAY / 2019")
+        self.assertEqual(parsed["total"], 720)
+        self.assertEqual(parsed["currency"], "LKR")
+        self.assertEqual(parsed["items"], [])
         self.assertEqual(len(parsed["events"]), 2)
 
     def test_parses_checkout_result_and_emits_order_event(self):
