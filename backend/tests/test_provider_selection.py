@@ -15,6 +15,9 @@ class ProviderSelectionTest(unittest.TestCase):
         env = {
             'LLM_PROVIDER': 'auto',
             'OPENROUTER_API_KEY': 'test-key',
+            'OPENROUTER_MODEL': '',
+            'OPENROUTER_FAST_MODEL': 'google/gemma-4-31b-it:free',
+            'OPENROUTER_REASONING_MODEL': 'google/gemma-4-31b-it:free',
             'GROQ_API_KEY': '',
             'GEMINI_API_KEY': '',
         }
@@ -47,6 +50,30 @@ class ProviderSelectionTest(unittest.TestCase):
             _, provider_selector = self._reload_modules()
             self.assertEqual(provider_selector.select_model('openrouter', 'simple question'), 'openai/gpt-4.1-mini')
             self.assertEqual(provider_selector.select_model('openrouter', 'long and complex question that would normally trigger reasoning mode'), 'openai/gpt-4.1-mini')
+        finally:
+            for key, value in old.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            self._reload_modules()
+
+    def test_explicit_cloudflare_is_respected_when_credentials_present(self):
+        env = {
+            'LLM_PROVIDER': 'cloudflare',
+            'CLOUDFLARE_ACCOUNT_ID': 'account',
+            'CLOUDFLARE_API_TOKEN': 'token',
+            'CLOUDFLARE_MODEL': '@cf/google/gemma-4-26b-a4b-it',
+            'OPENROUTER_API_KEY': '',
+            'GROQ_API_KEY': '',
+            'GEMINI_API_KEY': '',
+        }
+        old = {key: os.environ.get(key) for key in env}
+        try:
+            os.environ.update(env)
+            _, provider_selector = self._reload_modules()
+            self.assertEqual(provider_selector.select_provider('hello'), 'cloudflare')
+            self.assertEqual(provider_selector.select_model('cloudflare', 'simple question'), '@cf/google/gemma-4-26b-a4b-it')
         finally:
             for key, value in old.items():
                 if value is None:

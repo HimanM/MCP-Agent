@@ -16,6 +16,8 @@ const CHAT_CACHE_PREFIX = "kapruka.chat.messages";
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000;
 const RAW_HISTORY_LIMIT = 6;
 const SUMMARY_CHAR_LIMIT = 900;
+const TYPEWRITER_STEP_MS = 14;
+const TYPEWRITER_CHARS_PER_STEP = 6;
 
 function chatCacheKey(sessionId: string) {
   return `${CHAT_CACHE_PREFIX}:${sessionId}`;
@@ -85,6 +87,10 @@ function summarizeHistory(messages: Message[]) {
   return summary ? `Earlier conversation summary: ${summary}` : "";
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export function useChat(sessionId: string, modelOverride?: string | null) {
   const [messages, setMessages] = useState<Message[]>(() => loadCachedMessages(sessionId));
   const [isStreaming, setIsStreaming] = useState(false);
@@ -125,6 +131,31 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
       const toolCalls: { tool: string; args: Record<string, unknown> }[] = [];
       const toolResults: { tool: string; result?: string; raw?: string; product?: ProductSummary; products?: ProductSummary[]; tracking?: TrackingSummary; order?: OrderSummary }[] = [];
       const assistantId = `assistant-${++idCounter.current}`;
+      const assistantMsg: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      const revealAssistantText = async (
+        fullText: string,
+        results: typeof toolResults
+      ) => {
+        for (let length = TYPEWRITER_CHARS_PER_STEP; length < fullText.length; length += TYPEWRITER_CHARS_PER_STEP) {
+          const partial = fullText.slice(0, length);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: partial } : m))
+          );
+          await sleep(TYPEWRITER_STEP_MS);
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: fullText, toolResults: [...results] } : m
+          )
+        );
+      };
 
       try {
         for await (const event of streamChat(text, sessionId, history, historySummary, modelOverride)) {
@@ -132,22 +163,9 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
             case "tool_call":
               toolCalls.push({ tool: event.tool!, args: event.args || {} });
               setMessages((prev) => {
-                const existing = prev.find((m) => m.id === assistantId);
-                if (existing) {
-                  return prev.map((m) =>
-                    m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
-                  );
-                }
-                return [
-                  ...prev,
-                  {
-                    id: assistantId,
-                    role: "assistant" as const,
-                    content: "",
-                    toolCalls: [...toolCalls],
-                    timestamp: Date.now(),
-                  },
-                ];
+                return prev.map((m) =>
+                  m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
+                );
               });
               break;
 
@@ -161,48 +179,11 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
                 tracking: event.tracking,
                 order: event.order,
               });
-              setMessages((prev) => {
-                const existing = prev.find((m) => m.id === assistantId);
-                const updatedResults = [...toolResults];
-                if (existing) {
-                  return prev.map((m) =>
-                    m.id === assistantId ? { ...m, toolResults: updatedResults } : m
-                  );
-                }
-                return [
-                  ...prev,
-                  {
-                    id: assistantId,
-                    role: "assistant" as const,
-                    content: assistantContent,
-                    toolResults: updatedResults,
-                    timestamp: Date.now(),
-                  },
-                ];
-              });
               break;
 
             case "text":
               assistantContent = event.text || "";
-              setMessages((prev) => {
-                const existing = prev.find((m) => m.id === assistantId);
-                const updatedResults = [...toolResults];
-                if (existing) {
-                  return prev.map((m) =>
-                    m.id === assistantId ? { ...m, content: assistantContent, toolResults: updatedResults } : m
-                  );
-                }
-                return [
-                  ...prev,
-                  {
-                    id: assistantId,
-                    role: "assistant" as const,
-                    content: assistantContent,
-                    toolResults: updatedResults,
-                    timestamp: Date.now(),
-                  },
-                ];
-              });
+              await revealAssistantText(assistantContent, [...toolResults]);
               break;
 
             case "error":
@@ -213,6 +194,11 @@ export function useChat(sessionId: string, modelOverride?: string | null) {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Connection failed");
       } finally {
+        if (!assistantContent && toolResults.length) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, toolResults: [...toolResults] } : m))
+          );
+        }
         setIsStreaming(false);
       }
     },

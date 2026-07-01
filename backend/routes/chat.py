@@ -50,6 +50,9 @@ def _provider_fallback_order(message_text: str, model_override: str | None = Non
 
 
 def _provider_chat_fn(provider: str):
+    if provider == "cloudflare":
+        from agent.openrouter_agent import chat_cloudflare
+        return chat_cloudflare
     if provider == "openrouter":
         from agent.openrouter_agent import chat
         return chat
@@ -100,7 +103,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         candidates = _provider_fallback_order(req.message, model_override=req.model_override)
         if not candidates:
             yield (
-                f"data: {json.dumps({'type': 'error', 'error': 'No LLM provider is configured. Set OPENROUTER_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY in the repo .env file.'})}\n\n"
+                f"data: {json.dumps({'type': 'error', 'error': 'No LLM provider is configured. Set Cloudflare, OpenRouter, Groq, or Gemini credentials in the repo .env file.'})}\n\n"
             )
             yield 'data: [DONE]\n\n'
             return

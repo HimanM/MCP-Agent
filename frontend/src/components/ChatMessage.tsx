@@ -205,7 +205,7 @@ export default function ChatMessage({
   const orderResult =
     message.toolResults?.map((entry) => entry.order).find((entry): entry is OrderSummary => Boolean(entry)) || null;
   const canPlayVoice = !isUser && Boolean(message.content?.trim());
-  const showLoadingDots = !isUser && isStreaming;
+  const showLoadingDots = !isUser && isStreaming && !message.content;
   const userClass = "ml-auto max-w-[min(78%,38rem)]";
   const assistantClass = hasProducts ? "w-full max-w-none" : "max-w-[min(100%,70rem)]";
   const speechKey = useMemo(() => `${message.id}:${message.content}`, [message.id, message.content]);
@@ -243,10 +243,13 @@ export default function ChatMessage({
 
             {message.content ? <MessageBody content={message.content} hasProducts={hasProducts} /> : null}
             {showLoadingDots ? (
-              <div className="mt-3 flex items-center gap-1.5">
-                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
-                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
-                <div className="typing-dot h-2 w-2 rounded-full bg-muted" />
+              <div className="mt-3 flex items-center gap-2 text-xs font-medium text-muted">
+                <span className="thinking-text">Thinking</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted" />
+                </span>
               </div>
             ) : null}
             {canPlayVoice ? (

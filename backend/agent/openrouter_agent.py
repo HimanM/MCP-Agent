@@ -85,19 +85,22 @@ async def _update_context_from_message(session_id: str, user_text: str, ctx: dic
     return ctx
 
 
-async def _call_openrouter(
+async def _call_openai_compatible(
     messages: list[dict],
     tools: list[dict],
     model: str,
     session_id: str,
+    provider: str = "openrouter",
     retries: int = 2,
 ):
+    is_cloudflare = provider == "cloudflare"
     headers = {
-        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Authorization": f"Bearer {settings.cloudflare_api_token if is_cloudflare else settings.openrouter_api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": settings.openrouter_site_url,
-        "X-Title": settings.openrouter_app_name,
     }
+    if not is_cloudflare:
+        headers["HTTP-Referer"] = settings.openrouter_site_url
+        headers["X-Title"] = settings.openrouter_app_name
 
     payload: dict = {
         "model": model,
@@ -106,6 +109,12 @@ async def _call_openrouter(
         "max_tokens": 4096,
         "session_id": session_id,
     }
+    provider_order = settings.openrouter_provider_order_list
+    if provider_order and not is_cloudflare:
+        payload["provider"] = {
+            "order": provider_order,
+            "allow_fallbacks": settings.openrouter_provider_allow_fallbacks,
+        }
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
@@ -113,7 +122,7 @@ async def _call_openrouter(
     for attempt in range(retries):
         try:
             response = await http_client.post(
-                f"{settings.openrouter_base_url.rstrip('/')}/chat/completions",
+                f"{(settings.cloudflare_base_url if is_cloudflare else settings.openrouter_base_url).rstrip('/')}/chat/completions",
                 headers=headers,
                 json=payload,
             )
@@ -136,6 +145,7 @@ async def chat(
     history: list[dict] | None = None,
     history_summary: str = "",
     model_override: str | None = None,
+    provider: str = "openrouter",
 ) -> AsyncGenerator[dict, None]:
     lang = detect_language(user_text)
     system_prompt = build_system_prompt(lang, user_text)
@@ -148,7 +158,7 @@ async def chat(
         await cart_manager.update_budget(session_id, ctx["budget_max"])
 
     user_message = build_user_message(user_text, cart_state, ctx, history_summary=history_summary)
-    model = select_model("openrouter", user_text, model_override=model_override)
+    model = select_model(provider, user_text, model_override=model_override)
 
     messages = [{"role": "system", "content": system_prompt}]
     if history:
@@ -162,7 +172,7 @@ async def chat(
     seen_tool_signatures: set[str] = set()
 
     try:
-        response, active_model = await _call_openrouter(messages, _openrouter_tools(), model, session_id)
+        response, active_model = await _call_openai_compatible(messages, _openrouter_tools(), model, session_id, provider=provider)
         await cart_manager.save_llm_usage(session_id, _usage_snapshot(response))
         logger.info("Using OpenRouter model: %s", active_model)
     except Exception as exc:
@@ -228,10 +238,15 @@ async def chat(
                 return
 
         try:
-            response, _ = await _call_openrouter(messages, _openrouter_tools(), model, session_id)
+            response, _ = await _call_openai_compatible(messages, _openrouter_tools(), model, session_id, provider=provider)
             await cart_manager.save_llm_usage(session_id, _usage_snapshot(response))
         except Exception as exc:
             yield {"type": "error", "error": _format_openrouter_error(exc)}
             return
 
     yield {"type": "text", "text": "I'm sorry, I couldn't process that request. Please try again."}
+
+
+async def chat_cloudflare(*args, **kwargs) -> AsyncGenerator[dict, None]:
+    async for event in chat(*args, provider="cloudflare", **kwargs):
+        yield event

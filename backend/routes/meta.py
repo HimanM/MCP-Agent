@@ -32,6 +32,10 @@ async def meta(session_id: str | None = Query(default=None)):
             "backup_model": settings.openrouter_backup_model,
             "usage": llm_usage,
         },
+        "cloudflare": {
+            "configured": settings.cloudflare_enabled,
+            "model": settings.cloudflare_model,
+        },
         "tts": {
             "configured": settings.elevenlabs_enabled,
             "provider": "elevenlabs" if settings.elevenlabs_enabled else "none",

@@ -44,7 +44,9 @@ def is_high_density_request(text: str) -> bool:
 def select_provider(message_text: str = "") -> str:
     requested = normalize_provider(settings.llm_provider)
     if requested == "auto":
-        for candidate in ("openrouter", "groq", "gemini"):
+        for candidate in ("cloudflare", "openrouter", "groq", "gemini"):
+            if candidate == "cloudflare" and settings.cloudflare_enabled:
+                return candidate
             if candidate == "openrouter" and settings.openrouter_api_key:
                 return candidate
             if candidate == "groq" and settings.groq_api_key:
@@ -53,6 +55,8 @@ def select_provider(message_text: str = "") -> str:
                 return candidate
         return "none"
 
+    if requested == "cloudflare" and settings.cloudflare_enabled:
+        return requested
     if requested == "openrouter" and settings.openrouter_api_key:
         return requested
     if requested == "groq" and settings.groq_api_key:
@@ -61,7 +65,7 @@ def select_provider(message_text: str = "") -> str:
         return requested
 
     # Fallback order when the configured provider is unavailable.
-    return "openrouter" if settings.openrouter_api_key else ("groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "none"))
+    return "cloudflare" if settings.cloudflare_enabled else ("openrouter" if settings.openrouter_api_key else ("groq" if settings.groq_api_key else ("gemini" if settings.gemini_api_key else "none")))
 
 
 def select_model(provider: str, message_text: str = "", model_override: str | None = None) -> str:
@@ -72,6 +76,8 @@ def select_model(provider: str, message_text: str = "", model_override: str | No
         return settings.groq_reasoning_model if high_density else settings.groq_fast_model or settings.groq_model
     if provider == "gemini":
         return settings.gemini_reasoning_model if high_density else settings.gemini_fast_model or settings.gemini_model
+    if provider == "cloudflare":
+        return settings.cloudflare_reasoning_model if high_density else settings.cloudflare_fast_model or settings.cloudflare_model
     if provider == "openrouter":
         if model_override:
             return model_override
